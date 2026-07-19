@@ -21,6 +21,26 @@ class MarketData:
             raise Exception("Exchange Not Supported")
 
     def get_ohlcv(self, symbol):
+        def get_usdt_symbols(self):
+
+    markets = self.exchange.load_markets()
+
+    symbols = []
+
+    for symbol in markets:
+
+        market = markets[symbol]
+
+        if (
+            market.get("active", False)
+            and market.get("spot", False)
+            and symbol.endswith("/USDT")
+        ):
+            symbols.append(symbol)
+
+    symbols.sort()
+
+    return symbols
 
         candles = self.exchange.fetch_ohlcv(
             symbol,
