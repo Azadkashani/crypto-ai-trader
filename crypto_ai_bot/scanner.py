@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v5
+Crypto AI Bot v5.1
 Market Scanner
 """
 
@@ -52,25 +52,41 @@ class MarketScanner:
 
                 strength = TrendEngine.strength(df)
 
-                score, reasons = ScoringEngine.calculate(df)
+                analysis = ScoringEngine.calculate(df)
+
+                score = analysis["score"]
+
+                confidence = analysis["confidence"]
+
+                reasons = analysis["reasons"]
 
                 action = ScoringEngine.action(score)
 
                 last = df.iloc[-1]
 
-                support = df["low"].tail(50).min()
+                support = round(df["low"].tail(50).min(), 4)
 
-                resistance = df["high"].tail(50).max()
+                resistance = round(df["high"].tail(50).max(), 4)
+
+                atr = float(last["ATR"])
+
+                entry = round(last["close"], 4)
+
+                stop_loss = round(entry - (atr * 1.5), 4)
+
+                take_profit = round(entry + (atr * 3), 4)
 
                 results.append({
 
                     "Symbol": symbol,
 
-                    "Price": round(last["close"], 4),
+                    "Price": entry,
 
                     "Trend": trend,
 
                     "Strength": strength,
+
+                    "Confidence": confidence,
 
                     "RSI": round(last["RSI"], 2),
 
@@ -78,9 +94,15 @@ class MarketScanner:
 
                     "Action": action,
 
-                    "Support": round(support, 4),
+                    "Support": support,
 
-                    "Resistance": round(resistance, 4),
+                    "Resistance": resistance,
+
+                    "Entry": entry,
+
+                    "StopLoss": stop_loss,
+
+                    "TakeProfit": take_profit,
 
                     "Reasons": ", ".join(reasons)
 
@@ -88,7 +110,7 @@ class MarketScanner:
 
             except Exception as e:
 
-                print(symbol, e)
+                print(f"{symbol} : {e}")
 
         results = sorted(
             results,
