@@ -1,9 +1,14 @@
 """
-Crypto AI Bot v4
+Crypto AI Bot v5
 Market Scanner
 """
 
-from config import SYMBOLS
+from config import (
+    SYMBOLS,
+    USE_ALL_MARKETS,
+    MAX_SYMBOLS,
+    TOP_RESULTS,
+)
 
 from data import MarketData
 from indicators import IndicatorEngine
@@ -17,11 +22,25 @@ class MarketScanner:
 
         self.data = MarketData()
 
+    def get_symbols(self):
+
+        if USE_ALL_MARKETS:
+
+            symbols = self.data.get_usdt_symbols()
+
+            return symbols[:MAX_SYMBOLS]
+
+        return SYMBOLS
+
     def scan(self):
 
         results = []
 
-        for symbol in SYMBOLS:
+        symbols = self.get_symbols()
+
+        print(f"Scanning {len(symbols)} symbols...\n")
+
+        for symbol in symbols:
 
             try:
 
@@ -30,6 +49,7 @@ class MarketScanner:
                 df = IndicatorEngine.calculate(df)
 
                 trend = TrendEngine.detect(df)
+
                 strength = TrendEngine.strength(df)
 
                 score, reasons = ScoringEngine.calculate(df)
@@ -39,6 +59,7 @@ class MarketScanner:
                 last = df.iloc[-1]
 
                 support = df["low"].tail(50).min()
+
                 resistance = df["high"].tail(50).max()
 
                 results.append({
@@ -67,11 +88,12 @@ class MarketScanner:
 
             except Exception as e:
 
-                print(f"{symbol} -> Error : {e}")
+                print(symbol, e)
 
-        results.sort(
+        results = sorted(
+            results,
             key=lambda x: x["Score"],
             reverse=True
         )
 
-        return results
+        return results[:TOP_RESULTS]
