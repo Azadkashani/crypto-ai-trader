@@ -74,3 +74,10 @@ RESISTANCE_LOOKBACK = 50
 BUY_SCORE = 80
 
 WATCH_SCORE = 60
+# -----------------------------
+# Market Scanner
+# -----------------------------
+
+QUOTE_CURRENCY = "USDT"
+
+TOP_RESULTS = 10
