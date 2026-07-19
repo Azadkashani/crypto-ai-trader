@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v4
+Crypto AI Bot v5
 Market Data Engine
 """
 
@@ -16,31 +16,13 @@ class MarketData:
     def __init__(self):
 
         if EXCHANGE_NAME.lower() == "gate":
-            self.exchange = ccxt.gate()
+            self.exchange = ccxt.gate({
+                "enableRateLimit": True
+            })
         else:
             raise Exception("Exchange Not Supported")
 
     def get_ohlcv(self, symbol):
-        def get_usdt_symbols(self):
-
-    markets = self.exchange.load_markets()
-
-    symbols = []
-
-    for symbol in markets:
-
-        market = markets[symbol]
-
-        if (
-            market.get("active", False)
-            and market.get("spot", False)
-            and symbol.endswith("/USDT")
-        ):
-            symbols.append(symbol)
-
-    symbols.sort()
-
-    return symbols
 
         candles = self.exchange.fetch_ohlcv(
             symbol,
@@ -66,3 +48,22 @@ class MarketData:
         )
 
         return df
+
+    def get_usdt_symbols(self):
+
+        markets = self.exchange.load_markets()
+
+        symbols = []
+
+        for symbol, market in markets.items():
+
+            if (
+                market.get("active", False)
+                and market.get("spot", False)
+                and market.get("quote") == "USDT"
+            ):
+                symbols.append(symbol)
+
+        symbols.sort()
+
+        return symbols
