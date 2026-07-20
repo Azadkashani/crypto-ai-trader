@@ -195,8 +195,8 @@ class ScoringEngine:
         # Multi Timeframe Confirmation
         # ==========================
            
+            
             base_score = score
-
         if mtf_signal == "Strong Bullish":
 
             score += 15
