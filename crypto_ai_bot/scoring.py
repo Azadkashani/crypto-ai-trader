@@ -1,6 +1,6 @@
 """
-Crypto AI Bot v5.1
-Scoring Engine
+Crypto AI Bot v5.2
+Advanced Scoring Engine
 """
 
 from config import BUY_SCORE
@@ -18,46 +18,86 @@ class ScoringEngine:
         confidence = 0
 
         reasons = []
+        warnings = []
+
+        price = last["close"]
+
+        support = df["low"].tail(50).min()
+        resistance = df["high"].tail(50).max()
 
         # =====================================================
-        # EMA Alignment
+        # EMA Trend
         # =====================================================
 
         if last["EMA20"] > last["EMA50"]:
+
             score += 20
-            confidence += 20
-            reasons.append("EMA20 > EMA50")
+            confidence += 15
+
+            reasons.append("EMA Bullish")
+
+        else:
+
+            score -= 10
+            warnings.append("EMA Weak")
+
 
         if last["EMA50"] > last["EMA200"]:
+
             score += 20
-            confidence += 20
-            reasons.append("EMA50 > EMA200")
+            confidence += 15
+
+            reasons.append("Long Trend Bullish")
+
+        else:
+
+            score -= 10
+            warnings.append("Long Trend Bearish")
+
 
         # =====================================================
         # RSI
         # =====================================================
 
-        if 45 <= last["RSI"] <= 70:
-            score += 20
-            confidence += 20
+        rsi = last["RSI"]
+
+        if 45 <= rsi <= 70:
+
+            score += 15
+            confidence += 15
+
             reasons.append("Healthy RSI")
 
-        elif last["RSI"] < 30:
-            score += 10
-            confidence += 10
-            reasons.append("Oversold RSI")
 
-        elif last["RSI"] > 70:
-            reasons.append("Overbought RSI")
+        elif rsi < 30:
+
+            score += 10
+            reasons.append("Oversold")
+
+
+        elif rsi > 75:
+
+            score -= 10
+            warnings.append("Overbought")
+
 
         # =====================================================
         # MACD
         # =====================================================
 
         if last["MACD"] > last["MACD_SIGNAL"]:
-            score += 20
-            confidence += 20
-            reasons.append("Bullish MACD")
+
+            score += 15
+            confidence += 10
+
+            reasons.append("MACD Bullish")
+
+
+        else:
+
+            score -= 10
+            warnings.append("MACD Bearish")
+
 
         # =====================================================
         # Volume
@@ -66,26 +106,86 @@ class ScoringEngine:
         avg_volume = df["volume"].tail(20).mean()
 
         if last["volume"] > avg_volume:
-            score += 20
-            confidence += 20
+
+            score += 10
+            confidence += 10
+
             reasons.append("High Volume")
 
-        score = min(score, 100)
-        confidence = min(confidence, 100)
+
+        # =====================================================
+        # Support / Resistance Filter
+        # =====================================================
+
+        resistance_distance = (
+            (resistance - price) / price
+        ) * 100
+
+
+        support_distance = (
+            (price - support) / price
+        ) * 100
+
+
+        # نزدیک مقاومت
+        if resistance_distance < 0.5:
+
+            score -= 15
+            warnings.append("Near Resistance")
+
+
+        # نزدیک حمایت
+        if support_distance < 1:
+
+            score += 10
+            reasons.append("Near Support")
+
+
+        # =====================================================
+        # Conflict Detection
+        # =====================================================
+
+        if (
+            last["EMA20"] < last["EMA50"]
+            and
+            last["MACD"] > last["MACD_SIGNAL"]
+        ):
+
+            confidence -= 15
+            warnings.append("Trend Conflict")
+
+
+        # محدود کردن مقادیر
+
+        score = max(0, min(score, 100))
+
+        confidence = max(0, min(confidence, 100))
+
 
         return {
+
             "score": score,
+
             "confidence": confidence,
-            "reasons": reasons
+
+            "reasons": reasons,
+
+            "warnings": warnings
+
         }
+
 
     @staticmethod
     def action(score):
 
         if score >= BUY_SCORE:
+
             return "BUY"
 
-        elif score >= WATCH_SCORE:
+
+        if score >= WATCH_SCORE:
+
             return "WATCH"
+
 
         return "NO TRADE"
