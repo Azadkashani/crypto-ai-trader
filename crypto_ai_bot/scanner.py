@@ -3,6 +3,7 @@ Crypto AI Bot v5.4
 Market Scanner
 """
 
+
 from config import (
     SYMBOLS,
     USE_ALL_MARKETS,
@@ -10,16 +11,21 @@ from config import (
     TOP_RESULTS,
 )
 
+
 from data import MarketData
 from indicators import IndicatorEngine
 from trend import TrendEngine
 from scoring import ScoringEngine
 
 
+
 class MarketScanner:
 
+
     def __init__(self):
+
         self.data = MarketData()
+
 
 
     def get_symbols(self):
@@ -30,28 +36,38 @@ class MarketScanner:
 
             return symbols[:MAX_SYMBOLS]
 
+
         return SYMBOLS
+
 
 
     def scan(self):
 
         results = []
 
+
         symbols = self.get_symbols()
 
-        print(f"Scanning {len(symbols)} symbols...\n")
+
+        print(
+            f"Scanning {len(symbols)} symbols...\n"
+        )
 
 
         for symbol in symbols:
 
+
             try:
 
+
                 df = self.data.get_ohlcv(symbol)
+
 
                 df = IndicatorEngine.calculate(df)
 
 
                 trend = TrendEngine.detect(df)
+
 
                 strength = TrendEngine.strength(df)
 
@@ -70,60 +86,45 @@ class MarketScanner:
                 warnings = analysis["warnings"]
 
 
+
                 action = ScoringEngine.action(
                     score,
                     breakout
                 )
 
 
-                # ==============================
-                # Trend Filter
-                # ==============================
-
-                if trend == "Sideways":
-
-                    if action in [
-                        "BUY",
-                        "BUY BREAKOUT"
-                    ]:
-
-                        action = "WATCH"
-
-                        warnings.append(
-                            "Sideways Trend"
-                        )
-
-
-                if trend == "Bearish":
-
-                    action = "NO TRADE"
-
-                    warnings.append(
-                        "Bearish Trend"
-                    )
-
 
                 last = df.iloc[-1]
 
 
-                support = round(
-                    df["low"].tail(50).min(),
-                    4
+
+                # مقاومت بدون کندل فعلی
+
+                resistance = (
+                    df["high"]
+                    .tail(50)
+                    .iloc[:-1]
+                    .max()
                 )
 
-                resistance = round(
-                    df["high"].tail(50).max(),
-                    4
+
+                support = (
+                    df["low"]
+                    .tail(50)
+                    .min()
                 )
+
 
 
                 atr = float(last["ATR"])
 
 
+
                 entry = round(
-                    last["close"],
+                    float(last["close"]),
                     4
                 )
+
 
 
                 stop_loss = round(
@@ -132,50 +133,76 @@ class MarketScanner:
                 )
 
 
+
                 take_profit = round(
                     entry + (atr * 3),
                     4
                 )
 
 
+
                 results.append({
+
 
                     "Symbol": symbol,
 
+
                     "Price": entry,
+
 
                     "Trend": trend,
 
+
                     "Strength": strength,
 
+
                     "Confidence": confidence,
+
 
                     "RSI": round(
                         last["RSI"],
                         2
                     ),
 
+
                     "Score": score,
+
 
                     "Action": action,
 
-                    "Support": support,
-
-                    "Resistance": resistance,
-
-                    "Entry": entry,
-
-                    "StopLoss": stop_loss,
-
-                    "TakeProfit": take_profit,
 
                     "Breakout": breakout,
 
+
+                    "Support": round(
+                        support,
+                        4
+                    ),
+
+
+                    "Resistance": round(
+                        resistance,
+                        4
+                    ),
+
+
+                    "Entry": entry,
+
+
+                    "StopLoss": stop_loss,
+
+
+                    "TakeProfit": take_profit,
+
+
                     "Reasons": ", ".join(reasons),
+
 
                     "Warnings": ", ".join(warnings)
 
+
                 })
+
 
 
             except Exception as e:
@@ -183,6 +210,7 @@ class MarketScanner:
                 print(
                     f"{symbol} : {e}"
                 )
+
 
 
         results = sorted(
