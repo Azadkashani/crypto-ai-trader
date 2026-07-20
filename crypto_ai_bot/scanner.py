@@ -62,7 +62,10 @@ class MarketScanner:
 
             try:
 
-                df = self.data.get_ohlcv(symbol)
+                df = self.data.get_ohlcv(
+    symbol,
+    timeframe=tf
+)
 
 
                 df = IndicatorEngine.calculate(df)
