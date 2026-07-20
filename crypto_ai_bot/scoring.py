@@ -1,6 +1,6 @@
 """
-Crypto AI Bot v5.3
-Advanced Scoring Engine
+Crypto AI Bot v5.4
+Signal Quality Scoring Engine
 """
 
 from config import BUY_SCORE
@@ -8,6 +8,7 @@ from config import WATCH_SCORE
 
 
 class ScoringEngine:
+
 
     @staticmethod
     def calculate(df):
@@ -25,27 +26,29 @@ class ScoringEngine:
         support = df["low"].tail(50).min()
         resistance = df["high"].tail(50).max()
 
-        # =====================================================
-        # Trend EMA
-        # =====================================================
+
+        # ===============================
+        # Trend Detection
+        # ===============================
+
+        bullish_trend = False
 
         if last["EMA20"] > last["EMA50"]:
 
             score += 20
-            confidence += 15
-            reasons.append("EMA Short Trend Bullish")
+            reasons.append("EMA Short Bullish")
 
         else:
 
             score -= 10
-            warnings.append("EMA Short Trend Weak")
+            warnings.append("EMA Weak")
 
 
         if last["EMA50"] > last["EMA200"]:
 
             score += 20
-            confidence += 15
-            reasons.append("EMA Long Trend Bullish")
+            bullish_trend = True
+            reasons.append("EMA Long Bullish")
 
         else:
 
@@ -53,37 +56,44 @@ class ScoringEngine:
             warnings.append("Long Trend Bearish")
 
 
-        # =====================================================
-        # RSI
-        # =====================================================
+        # ===============================
+        # RSI Filter
+        # ===============================
 
         rsi = last["RSI"]
 
-        if 45 <= rsi <= 70:
+
+        if 45 <= rsi < 70:
 
             score += 15
             confidence += 15
             reasons.append("Healthy RSI")
+
+
+        elif rsi >= 70:
+
+            score -= 10
+            warnings.append("RSI Overbought")
+
 
         elif rsi < 30:
 
             score += 10
             reasons.append("Oversold RSI")
 
-        elif rsi > 75:
-
-            score -= 10
-            warnings.append("Overbought")
 
 
-        # =====================================================
+        # ===============================
         # MACD
-        # =====================================================
+        # ===============================
+
+        macd_bullish = False
+
 
         if last["MACD"] > last["MACD_SIGNAL"]:
 
             score += 15
-            confidence += 10
+            macd_bullish = True
             reasons.append("MACD Bullish")
 
         else:
@@ -92,22 +102,25 @@ class ScoringEngine:
             warnings.append("MACD Bearish")
 
 
-        # =====================================================
+
+        # ===============================
         # Volume
-        # =====================================================
+        # ===============================
 
         avg_volume = df["volume"].tail(20).mean()
+
 
         if last["volume"] > avg_volume:
 
             score += 10
             confidence += 10
-            reasons.append("Volume Confirmation")
+            reasons.append("Volume Confirmed")
 
 
-        # =====================================================
-        # Resistance / Support
-        # =====================================================
+
+        # ===============================
+        # Support / Resistance
+        # ===============================
 
         resistance_distance = (
             (resistance - price) / price
@@ -119,48 +132,80 @@ class ScoringEngine:
         ) * 100
 
 
+
         breakout = False
 
 
-        # Breakout confirmed
         if price > resistance:
 
             breakout = True
 
             score += 15
-            confidence += 15
+            confidence += 20
 
-            reasons.append("Resistance Breakout")
-
-
-        # نزدیک مقاومت ولی شکست نداده
-        elif resistance_distance < 0.3:
-
-            score -= 15
-            confidence -= 10
-
-            warnings.append(
-                "Too Close To Resistance"
+            reasons.append(
+                "Resistance Breakout"
             )
 
 
-        # نزدیک حمایت
+        elif resistance_distance < 0.3:
+
+            score -= 15
+
+            warnings.append(
+                "Near Resistance"
+            )
+
+
         if support_distance < 1:
 
-            score += 10
+            score += 5
 
             reasons.append(
                 "Near Support"
             )
 
 
-        # =====================================================
-        # Final Adjustment
-        # =====================================================
 
-        score = max(0, min(score, 100))
+        # ===============================
+        # Final Quality Filter
+        # ===============================
 
-        confidence = max(0, min(confidence, 100))
+
+        # بدون روند مشخص BUY ممنوع
+        if not bullish_trend:
+
+            if score >= BUY_SCORE:
+
+                score = WATCH_SCORE
+
+            warnings.append(
+                "No Strong Trend"
+            )
+
+
+        # تضاد MACD و روند
+
+        if bullish_trend and not macd_bullish:
+
+            confidence -= 15
+
+            warnings.append(
+                "MACD Conflict"
+            )
+
+
+
+        score = max(
+            0,
+            min(score,100)
+        )
+
+
+        confidence = max(
+            0,
+            min(confidence,100)
+        )
 
 
         return {
@@ -178,8 +223,10 @@ class ScoringEngine:
         }
 
 
+
     @staticmethod
     def action(score, breakout=False):
+
 
         if score >= BUY_SCORE and breakout:
 
