@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe
+Market Scanner + Multi Timeframe Engine
 """
 
 
@@ -15,8 +15,8 @@ from data import MarketData
 from indicators import IndicatorEngine
 from trend import TrendEngine
 from scoring import ScoringEngine
-from mtf_engine import MTFEngine
 
+from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
 
 
@@ -43,9 +43,63 @@ class MarketScanner:
 
 
 
+    def analyze_mtf(self, symbol):
+
+        """
+        Multi Timeframe Analysis
+
+        Example:
+        15m -> Bullish
+        1h  -> Bullish
+        4h  -> Bearish
+        """
+
+        mtf_results = {}
+
+
+        for tf in TIMEFRAMES:
+
+
+            try:
+
+                df = self.data.get_ohlcv(symbol)
+
+
+                df = IndicatorEngine.calculate(df)
+
+
+                trend = TrendEngine.detect(df)
+
+
+                mtf_results[tf] = trend
+
+
+            except Exception:
+
+
+                mtf_results[tf] = "Neutral"
+
+
+
+        mtf_signal = MTFEngine.analyze(
+            mtf_results
+        )
+
+
+        return (
+            mtf_signal,
+            mtf_results
+        )
+
+
+
+
+
     def scan(self):
 
+
         results = []
+
 
         symbols = self.get_symbols()
 
@@ -62,93 +116,35 @@ class MarketScanner:
             try:
 
 
-                # ==============================
-                # Main timeframe
-                # ==============================
-
                 df = self.data.get_ohlcv(symbol)
+
 
                 df = IndicatorEngine.calculate(df)
 
 
+
                 trend = TrendEngine.detect(df)
+
 
                 strength = TrendEngine.strength(df)
 
 
 
-                # ==============================
-                # Multi Timeframe Analysis
-                # ==============================
-
-                mtf_results = {}
-
-
-                for tf in TIMEFRAMES:
-
-
-                    self.data.exchange
-
-                    candles = self.data.exchange.fetch_ohlcv(
-                        symbol,
-                        timeframe=tf,
-                        limit=500
-                    )
-
-
-                    import pandas as pd
-
-
-                    tf_df = pd.DataFrame(
-                        candles,
-                        columns=[
-                            "time",
-                            "open",
-                            "high",
-                            "low",
-                            "close",
-                            "volume"
-                        ]
-                    )
-
-
-                    tf_df = IndicatorEngine.calculate(
-                        tf_df
-                    )
-
-
-                    mtf_results[tf] = TrendEngine.detect(
-                        tf_df
-                    )
-
-
-
-                mtf = MTFEngine.analyze(
-                    mtf_results
-                )
-
-
-                mtf_signal = mtf["signal"]
-
-                mtf_score = mtf["score"]
-
-
-
-
-                # ==============================
-                # Scoring
-                # ==============================
-
                 analysis = ScoringEngine.calculate(df)
+
 
 
                 score = analysis["score"]
 
+
                 confidence = analysis["confidence"]
+
 
                 breakout = analysis["breakout"]
 
+
                 reasons = analysis["reasons"]
+
 
                 warnings = analysis["warnings"]
 
@@ -162,33 +158,48 @@ class MarketScanner:
 
 
                 # ==============================
-                # MTF Filter
+                # MTF
+                # ==============================
+
+                mtf_signal, mtf_details = self.analyze_mtf(
+                    symbol
+                )
+
+
+
+                # ==============================
+                # Trend Filter
                 # ==============================
 
 
-                if (
-                    action in [
+                if trend == "Sideways":
+
+
+                    if action in [
                         "BUY",
                         "BUY BREAKOUT"
-                    ]
-                    and mtf_score < 0
-                ):
-
-                    action = "WATCH"
-
-                    warnings.append(
-                        "MTF Conflict"
-                    )
+                    ]:
 
 
+                        action = "WATCH"
 
-                if mtf_signal == "Strong Bearish":
+
+                        warnings.append(
+                            "Sideways Trend"
+                        )
+
+
+
+                if trend == "Bearish":
+
 
                     action = "NO TRADE"
 
+
                     warnings.append(
-                        "MTF Bearish"
+                        "Bearish Trend"
                     )
+
 
 
 
@@ -214,16 +225,19 @@ class MarketScanner:
                 )
 
 
+
                 entry = round(
                     last["close"],
                     4
                 )
 
 
+
                 stop_loss = round(
                     entry - (atr * 1.5),
                     4
                 )
+
 
 
                 take_profit = round(
@@ -233,51 +247,63 @@ class MarketScanner:
 
 
 
+
                 results.append({
 
 
                     "Symbol": symbol,
 
+
                     "Price": entry,
 
+
                     "Trend": trend,
+
 
                     "Strength": strength,
 
 
                     "MTF Signal": mtf_signal,
 
-                    "MTF Score": mtf_score,
 
-                    "MTF Details": mtf_results,
+                    "MTF Details": mtf_details,
 
 
                     "Confidence": confidence,
+
 
                     "RSI": round(
                         last["RSI"],
                         2
                     ),
 
+
                     "Score": score,
+
 
                     "Action": action,
 
 
                     "Support": support,
 
+
                     "Resistance": resistance,
+
 
                     "Entry": entry,
 
+
                     "StopLoss": stop_loss,
+
 
                     "TakeProfit": take_profit,
 
 
                     "Breakout": breakout,
 
+
                     "Reasons": ", ".join(reasons),
+
 
                     "Warnings": ", ".join(warnings)
 
@@ -300,6 +326,7 @@ class MarketScanner:
             key=lambda x: x["Score"],
             reverse=True
         )
+
 
 
         return results[:TOP_RESULTS]
