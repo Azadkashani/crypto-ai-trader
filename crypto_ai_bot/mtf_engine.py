@@ -1,3 +1,5 @@
+%%writefile mtf_engine.py
+
 """
 Crypto AI Bot v5.7
 Multi Timeframe Engine
@@ -12,92 +14,78 @@ from trend import TrendEngine
 class MTFEngine:
 
 
-
     @staticmethod
-    def analyze(timeframes):
-
+    def analyze(dataframes):
 
         results = {}
 
+        bullish = 0
+        bearish = 0
 
-        for tf, df in timeframes.items():
 
+        for tf, df in dataframes.items():
 
             df = IndicatorEngine.calculate(df)
 
-
             trend = TrendEngine.detect(df)
 
-
-            results[tf] = trend
-
+            strength = TrendEngine.strength(df)
 
 
-        score = 0
+            results[tf] = {
+
+                "trend": trend,
+
+                "strength": strength
+
+            }
 
 
-        if results.get("15m") == "Bullish":
+            if trend == "Bullish":
 
-            score += 40
-
-        elif results.get("15m") == "Bearish":
-
-            score -= 40
+                bullish += 1
 
 
+            elif trend == "Bearish":
 
-        if results.get("1h") == "Bullish":
-
-            score += 30
-
-        elif results.get("1h") == "Bearish":
-
-            score -= 30
+                bearish += 1
 
 
 
-        if results.get("4h") == "Bullish":
-
-            score += 30
-
-        elif results.get("4h") == "Bearish":
-
-            score -= 30
+        total = len(dataframes)
 
 
+        if bullish == total:
 
-        if score >= 80:
-
-            alignment = "Strong Bullish"
-
-
-        elif score >= 40:
-
-            alignment = "Bullish"
+            final_trend = "Bullish"
 
 
-        elif score <= -80:
+        elif bearish == total:
 
-            alignment = "Strong Bearish"
-
-
-        elif score <= -40:
-
-            alignment = "Bearish"
+            final_trend = "Bearish"
 
 
         else:
 
-            alignment = "Neutral"
+            final_trend = "Mixed"
 
+
+
+        confidence = int(
+            max(bullish, bearish)
+            /
+            total
+            *
+            100
+        )
 
 
         return {
 
-            "score": score,
+            "timeframes": results,
 
-            "alignment": alignment,
+            "final_trend": final_trend,
 
-            "trends": results
+            "confidence": confidence
 
         }
