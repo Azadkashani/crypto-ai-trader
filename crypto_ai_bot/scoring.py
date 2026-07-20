@@ -231,15 +231,14 @@ class ScoringEngine:
                 "Strong Bearish Multi Timeframe"
             )
         
-        # محدود کردن امتیاز
+                # محدود کردن امتیاز
 
         score = max(0, min(score, 100))
 
-confidence = max(
-    0,
-    min(confidence, 100)
-)
-
+        confidence = max(
+            0,
+            min(confidence, 100)
+        )
 
         return {
 
