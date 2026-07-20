@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v5.2
+Crypto AI Bot v5.3
 Advanced Scoring Engine
 """
 
@@ -26,28 +26,26 @@ class ScoringEngine:
         resistance = df["high"].tail(50).max()
 
         # =====================================================
-        # EMA Trend
+        # Trend EMA
         # =====================================================
 
         if last["EMA20"] > last["EMA50"]:
 
             score += 20
             confidence += 15
-
-            reasons.append("EMA Bullish")
+            reasons.append("EMA Short Trend Bullish")
 
         else:
 
             score -= 10
-            warnings.append("EMA Weak")
+            warnings.append("EMA Short Trend Weak")
 
 
         if last["EMA50"] > last["EMA200"]:
 
             score += 20
             confidence += 15
-
-            reasons.append("Long Trend Bullish")
+            reasons.append("EMA Long Trend Bullish")
 
         else:
 
@@ -65,15 +63,12 @@ class ScoringEngine:
 
             score += 15
             confidence += 15
-
             reasons.append("Healthy RSI")
-
 
         elif rsi < 30:
 
             score += 10
-            reasons.append("Oversold")
-
+            reasons.append("Oversold RSI")
 
         elif rsi > 75:
 
@@ -89,9 +84,7 @@ class ScoringEngine:
 
             score += 15
             confidence += 10
-
             reasons.append("MACD Bullish")
-
 
         else:
 
@@ -109,12 +102,11 @@ class ScoringEngine:
 
             score += 10
             confidence += 10
-
-            reasons.append("High Volume")
+            reasons.append("Volume Confirmation")
 
 
         # =====================================================
-        # Support / Resistance Filter
+        # Resistance / Support
         # =====================================================
 
         resistance_distance = (
@@ -127,35 +119,44 @@ class ScoringEngine:
         ) * 100
 
 
-        # نزدیک مقاومت
-        if resistance_distance < 0.5:
+        breakout = False
+
+
+        # Breakout confirmed
+        if price > resistance:
+
+            breakout = True
+
+            score += 15
+            confidence += 15
+
+            reasons.append("Resistance Breakout")
+
+
+        # نزدیک مقاومت ولی شکست نداده
+        elif resistance_distance < 0.3:
 
             score -= 15
-            warnings.append("Near Resistance")
+            confidence -= 10
+
+            warnings.append(
+                "Too Close To Resistance"
+            )
 
 
         # نزدیک حمایت
         if support_distance < 1:
 
             score += 10
-            reasons.append("Near Support")
+
+            reasons.append(
+                "Near Support"
+            )
 
 
         # =====================================================
-        # Conflict Detection
+        # Final Adjustment
         # =====================================================
-
-        if (
-            last["EMA20"] < last["EMA50"]
-            and
-            last["MACD"] > last["MACD_SIGNAL"]
-        ):
-
-            confidence -= 15
-            warnings.append("Trend Conflict")
-
-
-        # محدود کردن مقادیر
 
         score = max(0, min(score, 100))
 
@@ -168,6 +169,8 @@ class ScoringEngine:
 
             "confidence": confidence,
 
+            "breakout": breakout,
+
             "reasons": reasons,
 
             "warnings": warnings
@@ -176,7 +179,12 @@ class ScoringEngine:
 
 
     @staticmethod
-    def action(score):
+    def action(score, breakout=False):
+
+        if score >= BUY_SCORE and breakout:
+
+            return "BUY BREAKOUT"
+
 
         if score >= BUY_SCORE:
 
