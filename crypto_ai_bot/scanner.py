@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v5.1
+Crypto AI Bot v5.3
 Market Scanner
 """
 
@@ -22,6 +22,7 @@ class MarketScanner:
 
         self.data = MarketData()
 
+
     def get_symbols(self):
 
         if USE_ALL_MARKETS:
@@ -32,6 +33,7 @@ class MarketScanner:
 
         return SYMBOLS
 
+
     def scan(self):
 
         results = []
@@ -39,6 +41,7 @@ class MarketScanner:
         symbols = self.get_symbols()
 
         print(f"Scanning {len(symbols)} symbols...\n")
+
 
         for symbol in symbols:
 
@@ -48,33 +51,66 @@ class MarketScanner:
 
                 df = IndicatorEngine.calculate(df)
 
+
                 trend = TrendEngine.detect(df)
 
                 strength = TrendEngine.strength(df)
 
+
                 analysis = ScoringEngine.calculate(df)
+
 
                 score = analysis["score"]
 
                 confidence = analysis["confidence"]
 
+                breakout = analysis["breakout"]
+
                 reasons = analysis["reasons"]
 
-                action = ScoringEngine.action(score)
+                warnings = analysis["warnings"]
+
+
+                action = ScoringEngine.action(
+                    score,
+                    breakout
+                )
+
 
                 last = df.iloc[-1]
 
-                support = round(df["low"].tail(50).min(), 4)
 
-                resistance = round(df["high"].tail(50).max(), 4)
+                support = round(
+                    df["low"].tail(50).min(),
+                    4
+                )
+
+                resistance = round(
+                    df["high"].tail(50).max(),
+                    4
+                )
+
 
                 atr = float(last["ATR"])
 
-                entry = round(last["close"], 4)
 
-                stop_loss = round(entry - (atr * 1.5), 4)
+                entry = round(
+                    last["close"],
+                    4
+                )
 
-                take_profit = round(entry + (atr * 3), 4)
+
+                stop_loss = round(
+                    entry - (atr * 1.5),
+                    4
+                )
+
+
+                take_profit = round(
+                    entry + (atr * 3),
+                    4
+                )
+
 
                 results.append({
 
@@ -88,7 +124,10 @@ class MarketScanner:
 
                     "Confidence": confidence,
 
-                    "RSI": round(last["RSI"], 2),
+                    "RSI": round(
+                        last["RSI"],
+                        2
+                    ),
 
                     "Score": score,
 
@@ -104,18 +143,25 @@ class MarketScanner:
 
                     "TakeProfit": take_profit,
 
-                    "Reasons": ", ".join(reasons)
+                    "Breakout": breakout,
+
+                    "Reasons": ", ".join(reasons),
+
+                    "Warnings": ", ".join(warnings)
 
                 })
+
 
             except Exception as e:
 
                 print(f"{symbol} : {e}")
+
 
         results = sorted(
             results,
             key=lambda x: x["Score"],
             reverse=True
         )
+
 
         return results[:TOP_RESULTS]
