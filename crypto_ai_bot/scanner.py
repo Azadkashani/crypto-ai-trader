@@ -1,8 +1,7 @@
 """
-Crypto AI Bot v5.4
+Crypto AI Bot v5.6
 Market Scanner
 """
-
 
 from config import (
     SYMBOLS,
@@ -11,12 +10,10 @@ from config import (
     TOP_RESULTS,
 )
 
-
 from data import MarketData
 from indicators import IndicatorEngine
 from trend import TrendEngine
 from scoring import ScoringEngine
-
 
 
 class MarketScanner:
@@ -27,7 +24,6 @@ class MarketScanner:
         self.data = MarketData()
 
 
-
     def get_symbols(self):
 
         if USE_ALL_MARKETS:
@@ -35,7 +31,6 @@ class MarketScanner:
             symbols = self.data.get_usdt_symbols()
 
             return symbols[:MAX_SYMBOLS]
-
 
         return SYMBOLS
 
@@ -45,32 +40,35 @@ class MarketScanner:
 
         results = []
 
-
         symbols = self.get_symbols()
 
-
-        print(
-            f"Scanning {len(symbols)} symbols...\n"
-        )
+        print(f"Scanning {len(symbols)} symbols...\n")
 
 
         for symbol in symbols:
 
-
             try:
 
+                # دریافت دیتا
 
                 df = self.data.get_ohlcv(symbol)
 
 
+                # اندیکاتورها
+
                 df = IndicatorEngine.calculate(df)
 
 
-                trend = TrendEngine.detect(df)
 
+                # تحلیل روند
+
+                trend = TrendEngine.detect(df)
 
                 strength = TrendEngine.strength(df)
 
+
+
+                # امتیازدهی
 
                 analysis = ScoringEngine.calculate(df)
 
@@ -79,13 +77,13 @@ class MarketScanner:
 
                 confidence = analysis["confidence"]
 
-                breakout = analysis["breakout"]
-
                 reasons = analysis["reasons"]
 
-                warnings = analysis["warnings"]
+                breakout = analysis["breakout"]
 
 
+
+                # اکشن نهایی
 
                 action = ScoringEngine.action(
                     score,
@@ -98,26 +96,26 @@ class MarketScanner:
 
 
 
-                # مقاومت بدون کندل فعلی
+                # سطوح
 
-                resistance = (
-                    df["high"]
+                support = round(
+                    df["low"]
                     .tail(50)
-                    .iloc[:-1]
-                    .max()
+                    .min(),
+                    4
                 )
 
 
-                support = (
-                    df["low"]
+                resistance = round(
+                    df["high"]
                     .tail(50)
-                    .min()
+                    .max(),
+                    4
                 )
 
 
 
                 atr = float(last["ATR"])
-
 
 
                 entry = round(
@@ -126,12 +124,10 @@ class MarketScanner:
                 )
 
 
-
                 stop_loss = round(
                     entry - (atr * 1.5),
                     4
                 )
-
 
 
                 take_profit = round(
@@ -141,65 +137,53 @@ class MarketScanner:
 
 
 
-                results.append({
+                adx = round(
+                    float(last.get("ADX",0)),
+                    2
+                )
 
+
+
+                results.append({
 
                     "Symbol": symbol,
 
-
                     "Price": entry,
-
 
                     "Trend": trend,
 
-
                     "Strength": strength,
 
+                    "ADX": adx,
 
                     "Confidence": confidence,
 
-
                     "RSI": round(
-                        last["RSI"],
+                        float(last["RSI"]),
                         2
                     ),
 
-
                     "Score": score,
 
+                    "Breakout": breakout,
 
                     "Action": action,
 
 
-                    "Breakout": breakout,
+                    "Support": support,
 
-
-                    "Support": round(
-                        support,
-                        4
-                    ),
-
-
-                    "Resistance": round(
-                        resistance,
-                        4
-                    ),
+                    "Resistance": resistance,
 
 
                     "Entry": entry,
 
-
                     "StopLoss": stop_loss,
-
 
                     "TakeProfit": take_profit,
 
 
-                    "Reasons": ", ".join(reasons),
-
-
-                    "Warnings": ", ".join(warnings)
-
+                    "Reasons":
+                        ", ".join(reasons)
 
                 })
 
@@ -215,7 +199,7 @@ class MarketScanner:
 
         results = sorted(
             results,
-            key=lambda x: x["Score"],
+            key=lambda x:x["Score"],
             reverse=True
         )
 
