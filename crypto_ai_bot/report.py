@@ -113,7 +113,18 @@ class ReportEngine:
                     f"MTF Signal  : {item['MTF_Signal']}"
                 )
 
+            if "Base Score" in item:
 
+                print(
+                    f"Base Score  : {item['Base Score']}"
+                )
+
+
+            if "MTF Bonus" in item:
+
+                print(
+                    f"MTF Bonus   : {item['MTF Bonus']}"
+                )
 
             if "Confidence" in item:
 
