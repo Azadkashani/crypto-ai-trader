@@ -194,6 +194,8 @@ class ScoringEngine:
         # ==========================
         # Multi Timeframe Confirmation
         # ==========================
+           
+            base_score = score
 
         if mtf_signal == "Strong Bullish":
 
@@ -241,18 +243,14 @@ class ScoringEngine:
         )
 
         return {
-
-            "score": score,
-
-            "confidence": confidence,
-
-            "breakout": breakout,
-
-            "reasons": reasons,
-
-            "warnings": warnings
-
-        }
+    "base_score": base_score,
+    "mtf_bonus": score - base_score,
+    "score": score,
+    "confidence": confidence,
+    "breakout": breakout,
+    "reasons": reasons,
+    "warnings": warnings
+}
 
 
 
