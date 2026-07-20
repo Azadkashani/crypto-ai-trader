@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v4
+Crypto AI Bot v5.2
 Indicator Engine
 """
 
@@ -38,6 +38,7 @@ class IndicatorEngine:
             window=EMA_SLOW
         )
 
+
         # ==========================
         # RSI
         # ==========================
@@ -46,6 +47,7 @@ class IndicatorEngine:
             df["close"],
             window=RSI_PERIOD
         )
+
 
         # ==========================
         # MACD
@@ -59,6 +61,7 @@ class IndicatorEngine:
             df["close"]
         )
 
+
         # ==========================
         # ATR
         # ==========================
@@ -69,5 +72,35 @@ class IndicatorEngine:
             df["close"],
             window=ATR_PERIOD
         )
+
+
+        # ==========================
+        # ADX Trend Strength
+        # ==========================
+
+        adx_indicator = ta.trend.ADXIndicator(
+            high=df["high"],
+            low=df["low"],
+            close=df["close"],
+            window=14
+        )
+
+        df["ADX"] = adx_indicator.adx()
+
+        df["+DI"] = adx_indicator.adx_pos()
+
+        df["-DI"] = adx_indicator.adx_neg()
+
+
+        # ==========================
+        # Volume Average
+        # ==========================
+
+        df["AVG_VOLUME"] = (
+            df["volume"]
+            .rolling(20)
+            .mean()
+        )
+
 
         return df
