@@ -148,11 +148,11 @@ class MarketScanner:
 
                 base_score = analysis["base_score"]
 
-mtf_bonus = analysis["mtf_bonus"]
+                mtf_bonus = analysis["mtf_bonus"]
 
-score = analysis["score"]
+                score = analysis["score"]
 
-confidence = analysis["confidence"]
+                confidence = analysis["confidence"]
 
 
                 breakout = analysis["breakout"]
