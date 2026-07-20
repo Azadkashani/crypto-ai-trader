@@ -1,11 +1,9 @@
 """
-Crypto AI Bot v5.4
-Scoring Engine
+Crypto AI Bot v5.5
+Advanced Scoring Engine
 """
 
-
-from config import BUY_SCORE
-from config import WATCH_SCORE
+from config import BUY_SCORE, WATCH_SCORE
 
 
 class ScoringEngine:
@@ -17,11 +15,9 @@ class ScoringEngine:
         last = df.iloc[-1]
 
         score = 0
-
         confidence = 0
 
         reasons = []
-
         warnings = []
 
         breakout = False
@@ -33,9 +29,8 @@ class ScoringEngine:
 
         if last["EMA20"] > last["EMA50"]:
 
-            score += 20
-
-            confidence += 20
+            score += 15
+            confidence += 15
 
             reasons.append(
                 "EMA20 > EMA50"
@@ -44,12 +39,53 @@ class ScoringEngine:
 
         if last["EMA50"] > last["EMA200"]:
 
-            score += 20
-
-            confidence += 20
+            score += 15
+            confidence += 15
 
             reasons.append(
                 "EMA50 > EMA200"
+            )
+
+
+        # ==========================
+        # ADX Trend Strength
+        # ==========================
+
+        if last["ADX"] >= 25:
+
+            score += 15
+            confidence += 15
+
+            reasons.append(
+                "Strong ADX Trend"
+            )
+
+        elif last["ADX"] < 15:
+
+            warnings.append(
+                "Weak Trend"
+            )
+
+
+        # ==========================
+        # DI Direction
+        # ==========================
+
+        if last["+DI"] > last["-DI"]:
+
+            score += 10
+            confidence += 10
+
+            reasons.append(
+                "+DI > -DI"
+            )
+
+        elif last["-DI"] > last["+DI"]:
+
+            score -= 5
+
+            warnings.append(
+                "Bearish DI"
             )
 
 
@@ -60,30 +96,46 @@ class ScoringEngine:
         rsi = last["RSI"]
 
 
-        if 40 <= rsi <= 65:
+        if 45 <= rsi <= 65:
 
-            score += 20
-
-            confidence += 20
+            score += 15
+            confidence += 15
 
             reasons.append(
                 "Healthy RSI"
             )
 
 
-        elif rsi > 70:
+        elif 65 < rsi <= 75:
 
-            warnings.append(
-                "Overbought RSI"
-            )
+            if last["ADX"] >= 25:
+
+                score += 10
+
+                reasons.append(
+                    "Strong Momentum RSI"
+                )
+
+            else:
+
+                warnings.append(
+                    "High RSI"
+                )
 
 
         elif rsi < 30:
 
-            score += 10
+            score += 5
 
             reasons.append(
                 "Oversold RSI"
+            )
+
+
+        elif rsi > 75:
+
+            warnings.append(
+                "Overbought RSI"
             )
 
 
@@ -93,9 +145,8 @@ class ScoringEngine:
 
         if last["MACD"] > last["MACD_SIGNAL"]:
 
-            score += 20
-
-            confidence += 20
+            score += 15
+            confidence += 15
 
             reasons.append(
                 "Bullish MACD"
@@ -103,21 +154,13 @@ class ScoringEngine:
 
 
         # ==========================
-        # Volume
+        # Volume Confirmation
         # ==========================
 
-        avg_volume = (
-            df["volume"]
-            .tail(20)
-            .mean()
-        )
+        if last["volume"] > last["AVG_VOLUME"]:
 
-
-        if last["volume"] > avg_volume:
-
-            score += 20
-
-            confidence += 20
+            score += 15
+            confidence += 15
 
             reasons.append(
                 "High Volume"
@@ -135,22 +178,35 @@ class ScoringEngine:
         )
 
 
-        if last["close"] > resistance:
+        if (
+            last["close"] > resistance
+            and last["volume"] > last["AVG_VOLUME"]
+        ):
 
             breakout = True
 
             score += 10
 
             reasons.append(
-                "Resistance Breakout"
+                "Volume Breakout"
             )
+
+
+        # محدود کردن امتیاز
+
+        score = max(0, min(score, 100))
+
+        confidence = max(
+            0,
+            min(confidence,100)
+        )
 
 
         return {
 
-            "score": min(score,100),
+            "score": score,
 
-            "confidence": min(confidence,100),
+            "confidence": confidence,
 
             "breakout": breakout,
 
