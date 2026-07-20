@@ -6,11 +6,9 @@ Market Data Engine
 import ccxt
 import pandas as pd
 
-from config import (
-    EXCHANGE,
-    TIMEFRAME,
-    LIMIT
-)
+from config import EXCHANGE_NAME
+from config import TIMEFRAME
+from config import LIMIT
 
 
 class MarketData:
@@ -18,76 +16,166 @@ class MarketData:
 
     def __init__(self):
 
-        exchange_class = getattr(
-            ccxt,
-            EXCHANGE
-        )
+        if EXCHANGE_NAME.lower() == "gate":
 
-        self.exchange = exchange_class(
-            {
+            self.exchange = ccxt.gate({
                 "enableRateLimit": True
-            }
-        )
+            })
+
+        else:
+
+            raise Exception(
+                "Exchange Not Supported"
+            )
 
 
+
+    # =====================================
+    # Single Timeframe Data
+    # =====================================
 
     def get_ohlcv(
-        self,
-        symbol,
-        timeframe=TIMEFRAME
+            self,
+            symbol,
+            timeframe=None
     ):
 
+
+        if timeframe is None:
+
+            timeframe = TIMEFRAME
+
+
+
         candles = self.exchange.fetch_ohlcv(
+
             symbol,
+
             timeframe=timeframe,
+
             limit=LIMIT
-        )
 
-        return self.to_dataframe(
-            candles
         )
 
 
+
+        df = pd.DataFrame(
+
+            candles,
+
+            columns=[
+
+                "time",
+
+                "open",
+
+                "high",
+
+                "low",
+
+                "close",
+
+                "volume"
+
+            ]
+
+        )
+
+
+
+        df["time"] = pd.to_datetime(
+
+            df["time"],
+
+            unit="ms"
+
+        )
+
+
+        return df
+
+
+
+    # =====================================
+    # Multi Timeframe Data
+    # =====================================
+
+    def get_multi_timeframe(
+
+            self,
+
+            symbol,
+
+            timeframes
+
+    ):
+
+
+        data = {}
+
+
+
+        for tf in timeframes:
+
+
+            try:
+
+                data[tf] = self.get_ohlcv(
+
+                    symbol,
+
+                    tf
+
+                )
+
+
+            except Exception as e:
+
+                print(
+
+                    f"{symbol} {tf}: {e}"
+
+                )
+
+
+
+        return data
+
+
+
+
+    # =====================================
+    # USDT Markets
+    # =====================================
 
     def get_usdt_symbols(self):
 
+
         markets = self.exchange.load_markets()
+
 
         symbols = []
 
-        for symbol in markets:
+
+
+        for symbol, market in markets.items():
+
 
             if (
-                symbol.endswith("/USDT")
-                and markets[symbol].get("active", False)
+
+                market.get("active", False)
+
+                and market.get("spot", False)
+
+                and market.get("quote") == "USDT"
+
             ):
 
                 symbols.append(symbol)
 
 
+
+        symbols.sort()
+
+
         return symbols
-
-
-
-    def to_dataframe(self, candles):
-
-        df = pd.DataFrame(
-            candles,
-            columns=[
-                "timestamp",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume"
-            ]
-        )
-
-
-        df["timestamp"] = pd.to_datetime(
-            df["timestamp"],
-            unit="ms"
-        )
-
-
-        return df
