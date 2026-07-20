@@ -170,7 +170,20 @@ class MarketScanner:
                     breakout
                 )
 
+                # ==============================
+                # Base Score Filter
+                # ==============================
 
+                if action in [
+                    "BUY",
+                    "BUY BREAKOUT"
+                ] and base_score < 70:
+
+                    action = "WATCH"
+
+                    warnings.append(
+                        "Low Base Score"
+                    )
 
                 
 
