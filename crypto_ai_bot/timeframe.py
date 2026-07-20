@@ -1,37 +1,23 @@
+%%writefile timeframe.py
+
 """
 Crypto AI Bot v5.7
 Timeframe Manager
 """
 
-from data import MarketData
+from config import MTF_TIMEFRAMES
 
 
 class TimeframeManager:
 
 
-    def __init__(self):
+    @staticmethod
+    def get_timeframes():
 
-        self.data = MarketData()
-
-
-
-    def get_timeframe_data(self, symbol, timeframe):
-
-        return self.data.exchange.fetch_ohlcv(
-            symbol,
-            timeframe=timeframe,
-            limit=200
-        )
+        return MTF_TIMEFRAMES
 
 
+    @staticmethod
+    def main_timeframe():
 
-    def get_dataframe(self, symbol, timeframe):
-
-        candles = self.get_timeframe_data(
-            symbol,
-            timeframe
-        )
-
-        return self.data.to_dataframe(
-            candles
-        )
+        return "1h"
