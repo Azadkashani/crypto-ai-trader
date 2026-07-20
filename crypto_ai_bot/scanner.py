@@ -266,10 +266,10 @@ class MarketScanner:
                     "Strength": strength,
 
 
-                    "MTF Signal": mtf_signal,
+                    "MTF_Signal": mtf_signal,
 
 
-                    "MTF Details": mtf_details,
+                    "MTF_Details": mtf_details,
 
 
                     "Confidence": confidence,
