@@ -1,39 +1,80 @@
 """
-Crypto AI Bot v5
+Crypto AI Bot v5.7
 Market Data Engine
 """
 
 import ccxt
 import pandas as pd
 
-from config import EXCHANGE_NAME
-from config import TIMEFRAME
-from config import LIMIT
+from config import (
+    EXCHANGE,
+    TIMEFRAME,
+    LIMIT
+)
 
 
 class MarketData:
 
+
     def __init__(self):
 
-        if EXCHANGE_NAME.lower() == "gate":
-            self.exchange = ccxt.gate({
-                "enableRateLimit": True
-            })
-        else:
-            raise Exception("Exchange Not Supported")
+        exchange_class = getattr(
+            ccxt,
+            EXCHANGE
+        )
 
-    def get_ohlcv(self, symbol):
+        self.exchange = exchange_class(
+            {
+                "enableRateLimit": True
+            }
+        )
+
+
+
+    def get_ohlcv(
+        self,
+        symbol,
+        timeframe=TIMEFRAME
+    ):
 
         candles = self.exchange.fetch_ohlcv(
             symbol,
-            timeframe=TIMEFRAME,
+            timeframe=timeframe,
             limit=LIMIT
         )
+
+        return self.to_dataframe(
+            candles
+        )
+
+
+
+    def get_usdt_symbols(self):
+
+        markets = self.exchange.load_markets()
+
+        symbols = []
+
+        for symbol in markets:
+
+            if (
+                symbol.endswith("/USDT")
+                and markets[symbol].get("active", False)
+            ):
+
+                symbols.append(symbol)
+
+
+        return symbols
+
+
+
+    def to_dataframe(self, candles):
 
         df = pd.DataFrame(
             candles,
             columns=[
-                "time",
+                "timestamp",
                 "open",
                 "high",
                 "low",
@@ -42,28 +83,11 @@ class MarketData:
             ]
         )
 
-        df["time"] = pd.to_datetime(
-            df["time"],
+
+        df["timestamp"] = pd.to_datetime(
+            df["timestamp"],
             unit="ms"
         )
 
+
         return df
-
-    def get_usdt_symbols(self):
-
-        markets = self.exchange.load_markets()
-
-        symbols = []
-
-        for symbol, market in markets.items():
-
-            if (
-                market.get("active", False)
-                and market.get("spot", False)
-                and market.get("quote") == "USDT"
-            ):
-                symbols.append(symbol)
-
-        symbols.sort()
-
-        return symbols
