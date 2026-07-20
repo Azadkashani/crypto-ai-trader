@@ -1,91 +1,108 @@
-%%writefile mtf_engine.py
-
 """
 Crypto AI Bot v5.7
 Multi Timeframe Engine
 """
 
 
-from indicators import IndicatorEngine
-from trend import TrendEngine
-
+from timeframe import (
+    TIMEFRAME_WEIGHT
+)
 
 
 class MTFEngine:
 
 
     @staticmethod
-    def analyze(dataframes):
+    def analyze(results):
 
-        results = {}
+        """
+        Example:
 
-        bullish = 0
-        bearish = 0
+        {
+            "15m": "Bullish",
+            "1h": "Bullish",
+            "4h": "Bearish"
+        }
+
+        """
+
+        bullish_score = 0
+        bearish_score = 0
 
 
-        for tf, df in dataframes.items():
-
-            df = IndicatorEngine.calculate(df)
-
-            trend = TrendEngine.detect(df)
-
-            strength = TrendEngine.strength(df)
+        details = {}
 
 
-            results[tf] = {
 
-                "trend": trend,
+        for tf, trend in results.items():
 
-                "strength": strength
 
-            }
+            weight = TIMEFRAME_WEIGHT.get(tf, 0)
+
+
+            details[tf] = trend
 
 
             if trend == "Bullish":
 
-                bullish += 1
+                bullish_score += weight
 
 
             elif trend == "Bearish":
 
-                bearish += 1
+                bearish_score += weight
 
 
 
-        total = len(dataframes)
+        net_score = round(
+            (bullish_score - bearish_score) * 100,
+            2
+        )
 
 
-        if bullish == total:
 
-            final_trend = "Bullish"
+        if bullish_score >= 0.7:
+
+            signal = "Strong Bullish"
 
 
-        elif bearish == total:
+        elif bearish_score >= 0.7:
 
-            final_trend = "Bearish"
+            signal = "Strong Bearish"
+
+
+        elif bullish_score > bearish_score:
+
+            signal = "Bullish"
+
+
+        elif bearish_score > bullish_score:
+
+            signal = "Bearish"
 
 
         else:
 
-            final_trend = "Mixed"
+            signal = "Neutral"
 
-
-
-        confidence = int(
-            max(bullish, bearish)
-            /
-            total
-            *
-            100
-        )
 
 
         return {
 
-            "timeframes": results,
+            "signal": signal,
 
-            "final_trend": final_trend,
+            "bullish": round(
+                bullish_score * 100,
+                2
+            ),
 
-            "confidence": confidence
+            "bearish": round(
+                bearish_score * 100,
+                2
+            ),
+
+            "score": net_score,
+
+            "details": details
 
         }
