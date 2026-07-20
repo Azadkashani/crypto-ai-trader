@@ -133,7 +133,10 @@ class MarketScanner:
 
 
 
-                analysis = ScoringEngine.calculate(df)
+                analysis = ScoringEngine.calculate(
+    df,
+    mtf_signal
+)
 
 
 
