@@ -1,23 +1,18 @@
-%%writefile timeframe.py
-
 """
-Crypto AI Bot v5.7
-Timeframe Manager
+Crypto AI Bot v5.6
+Timeframe Configuration
 """
 
-from config import MTF_TIMEFRAMES
+# تایم‌فریم‌هایی که برای تحلیل چندتایم‌فریمی استفاده می‌شوند
+TIMEFRAMES = [
+    "15m",
+    "1h",
+    "4h"
+]
 
-
-class TimeframeManager:
-
-
-    @staticmethod
-    def get_timeframes():
-
-        return MTF_TIMEFRAMES
-
-
-    @staticmethod
-    def main_timeframe():
-
-        return "1h"
+# وزن هر تایم‌فریم
+TIMEFRAME_WEIGHT = {
+    "15m": 0.20,
+    "1h": 0.30,
+    "4h": 0.50
+}
