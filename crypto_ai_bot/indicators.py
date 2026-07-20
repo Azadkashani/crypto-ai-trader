@@ -16,8 +16,10 @@ from config import (
 
 class IndicatorEngine:
 
+
     @staticmethod
     def calculate(df):
+
 
         # ==========================
         # EMA
@@ -53,13 +55,16 @@ class IndicatorEngine:
         # MACD
         # ==========================
 
-        df["MACD"] = ta.trend.macd(
+        macd = ta.trend.MACD(
             df["close"]
         )
 
-        df["MACD_SIGNAL"] = ta.trend.macd_signal(
-            df["close"]
-        )
+        df["MACD"] = macd.macd()
+
+        df["MACD_SIGNAL"] = macd.macd_signal()
+
+        df["MACD_HIST"] = macd.macd_diff()
+
 
 
         # ==========================
@@ -67,33 +72,36 @@ class IndicatorEngine:
         # ==========================
 
         df["ATR"] = ta.volatility.average_true_range(
-            df["high"],
-            df["low"],
-            df["close"],
+            high=df["high"],
+            low=df["low"],
+            close=df["close"],
             window=ATR_PERIOD
         )
+
 
 
         # ==========================
         # ADX Trend Strength
         # ==========================
 
-        adx_indicator = ta.trend.ADXIndicator(
+        adx = ta.trend.ADXIndicator(
             high=df["high"],
             low=df["low"],
             close=df["close"],
             window=14
         )
 
-        df["ADX"] = adx_indicator.adx()
 
-        df["+DI"] = adx_indicator.adx_pos()
+        df["ADX"] = adx.adx()
 
-        df["-DI"] = adx_indicator.adx_neg()
+        df["+DI"] = adx.adx_pos()
+
+        df["-DI"] = adx.adx_neg()
+
 
 
         # ==========================
-        # Volume Average
+        # Volume Analysis
         # ==========================
 
         df["AVG_VOLUME"] = (
@@ -101,6 +109,61 @@ class IndicatorEngine:
             .rolling(20)
             .mean()
         )
+
+
+        df["VOLUME_RATIO"] = (
+            df["volume"] /
+            df["AVG_VOLUME"]
+        )
+
+
+
+        # ==========================
+        # Support Resistance
+        # ==========================
+
+        df["RESISTANCE_50"] = (
+            df["high"]
+            .rolling(50)
+            .max()
+        )
+
+
+        df["SUPPORT_50"] = (
+            df["low"]
+            .rolling(50)
+            .min()
+        )
+
+
+
+        # ==========================
+        # Candle Momentum
+        # ==========================
+
+        df["BODY"] = (
+            df["close"] -
+            df["open"]
+        )
+
+
+        df["BODY_PERCENT"] = (
+            abs(df["BODY"]) /
+            df["open"]
+        ) * 100
+
+
+
+        # ==========================
+        # Trend Direction
+        # ==========================
+
+        df["EMA_DISTANCE"] = (
+            (df["EMA20"] - df["EMA50"])
+            /
+            df["EMA50"]
+        ) * 100
+
 
 
         return df
