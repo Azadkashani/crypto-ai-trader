@@ -18,11 +18,8 @@ from scoring import ScoringEngine
 
 class MarketScanner:
 
-
     def __init__(self):
-
         self.data = MarketData()
-
 
 
     def get_symbols(self):
@@ -36,16 +33,13 @@ class MarketScanner:
         return SYMBOLS
 
 
-
     def scan(self):
 
         results = []
 
         symbols = self.get_symbols()
 
-        print(
-            f"Scanning {len(symbols)} symbols...\n"
-        )
+        print(f"Scanning {len(symbols)} symbols...\n")
 
 
         for symbol in symbols:
@@ -57,11 +51,9 @@ class MarketScanner:
                 df = IndicatorEngine.calculate(df)
 
 
-
                 trend = TrendEngine.detect(df)
 
                 strength = TrendEngine.strength(df)
-
 
 
                 analysis = ScoringEngine.calculate(df)
@@ -78,18 +70,15 @@ class MarketScanner:
                 warnings = analysis["warnings"]
 
 
-
                 action = ScoringEngine.action(
                     score,
                     breakout
                 )
 
 
-
-                # =====================================
-                # Final Trend Filter
-                # =====================================
-
+                # ==============================
+                # Trend Filter
+                # ==============================
 
                 if trend == "Sideways":
 
@@ -105,7 +94,6 @@ class MarketScanner:
                         )
 
 
-
                 if trend == "Bearish":
 
                     action = "NO TRADE"
@@ -113,7 +101,6 @@ class MarketScanner:
                     warnings.append(
                         "Bearish Trend"
                     )
-
 
 
                 last = df.iloc[-1]
@@ -124,16 +111,13 @@ class MarketScanner:
                     4
                 )
 
-
                 resistance = round(
                     df["high"].tail(50).max(),
                     4
                 )
 
 
-                atr = float(
-                    last["ATR"]
-                )
+                atr = float(last["ATR"])
 
 
                 entry = round(
@@ -152,7 +136,6 @@ class MarketScanner:
                     entry + (atr * 3),
                     4
                 )
-
 
 
                 results.append({
@@ -188,13 +171,9 @@ class MarketScanner:
 
                     "Breakout": breakout,
 
-                    "Reasons": ", ".join(
-                        reasons
-                    ),
+                    "Reasons": ", ".join(reasons),
 
-                    "Warnings": ", ".join(
-                        warnings
-                    )
+                    "Warnings": ", ".join(warnings)
 
                 })
 
@@ -204,7 +183,6 @@ class MarketScanner:
                 print(
                     f"{symbol} : {e}"
                 )
-
 
 
         results = sorted(
