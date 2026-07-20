@@ -10,7 +10,7 @@ class ScoringEngine:
 
 
     @staticmethod
-    def calculate(df):
+    def calculate(df, mtf_signal="Neutral"):
 
         last = df.iloc[-1]
 
@@ -191,15 +191,54 @@ class ScoringEngine:
                 "Volume Breakout"
             )
 
+        # ==========================
+        # Multi Timeframe Confirmation
+        # ==========================
 
+        if mtf_signal == "Strong Bullish":
+
+            score += 15
+            confidence += 15
+
+            reasons.append(
+                "Strong Multi Timeframe"
+            )
+
+        elif mtf_signal == "Bullish":
+
+            score += 8
+            confidence += 8
+
+            reasons.append(
+                "Bullish Multi Timeframe"
+            )
+
+        elif mtf_signal == "Bearish":
+
+            score -= 10
+            confidence -= 10
+
+            warnings.append(
+                "Bearish Multi Timeframe"
+            )
+
+        elif mtf_signal == "Strong Bearish":
+
+            score -= 20
+            confidence -= 20
+
+            warnings.append(
+                "Strong Bearish Multi Timeframe"
+            )
+        
         # محدود کردن امتیاز
 
         score = max(0, min(score, 100))
 
-        confidence = max(
-            0,
-            min(confidence,100)
-        )
+confidence = max(
+    0,
+    min(confidence, 100)
+)
 
 
         return {
