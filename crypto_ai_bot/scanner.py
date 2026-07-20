@@ -177,7 +177,7 @@ class MarketScanner:
                 if action in [
                     "BUY",
                     "BUY BREAKOUT"
-                ] and base_score < 70:
+                ] and base_score < 75:
 
                     action = "WATCH"
 
