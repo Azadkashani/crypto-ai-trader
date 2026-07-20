@@ -1,9 +1,9 @@
 """
-Crypto AI Bot v5.6
-Timeframe Configuration
+Crypto AI Bot v5.7
+Timeframe Manager
 """
 
-# تایم‌فریم‌هایی که برای تحلیل چندتایم‌فریمی استفاده می‌شوند
+# تایم‌فریم‌های مورد استفاده
 TIMEFRAMES = [
     "15m",
     "1h",
@@ -16,3 +16,18 @@ TIMEFRAME_WEIGHT = {
     "1h": 0.30,
     "4h": 0.50
 }
+
+
+class TimeframeManager:
+
+    @staticmethod
+    def get_timeframes():
+        return TIMEFRAMES
+
+    @staticmethod
+    def get_weights():
+        return TIMEFRAME_WEIGHT
+
+    @staticmethod
+    def main_timeframe():
+        return "1h"
