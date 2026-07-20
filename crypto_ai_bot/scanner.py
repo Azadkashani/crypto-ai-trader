@@ -286,7 +286,10 @@ confidence = analysis["confidence"]
                         2
                     ),
 
+                    "Base Score": base_score,
 
+                    "MTF Bonus": mtf_bonus,
+                    
                     "Score": score,
 
 
