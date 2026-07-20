@@ -131,7 +131,13 @@ class MarketScanner:
 
                 strength = TrendEngine.strength(df)
 
+                # ==============================
+                # MTF
+                # ==============================
 
+                mtf_signal, mtf_details = self.analyze_mtf(
+                    symbol
+                )
 
                 analysis = ScoringEngine.calculate(
     df,
@@ -163,13 +169,7 @@ class MarketScanner:
 
 
 
-                # ==============================
-                # MTF
-                # ==============================
-
-                mtf_signal, mtf_details = self.analyze_mtf(
-                    symbol
-                )
+                
 
 
 
