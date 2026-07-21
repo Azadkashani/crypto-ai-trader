@@ -3,7 +3,7 @@ Crypto AI Bot v5.7
 Market Scanner + Multi Timeframe Engine
 """
 
-
+from market_structure import MarketStructure
 from config import (
     SYMBOLS,
     USE_ALL_MARKETS,
@@ -70,7 +70,8 @@ class MarketScanner:
 
                 df = IndicatorEngine.calculate(df)
 
-
+                structure = MarketStructure.analyze(df)
+               
                 trend = TrendEngine.detect(df)
 
 
