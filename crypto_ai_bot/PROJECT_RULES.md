@@ -125,3 +125,20 @@ Never continue automatically.
 Never modify unrelated modules.
 
 Always stop after finishing the requested step.
+---
+
+# Existing Code Policy
+
+Existing project files are considered part of the project assets.
+
+Never delete or completely rewrite an existing module unless explicitly instructed.
+
+Whenever possible:
+
+- Improve existing code.
+- Refactor existing code.
+- Extend existing functionality.
+
+Preserve existing architecture unless a redesign has been approved.
+
+All modifications must remain compatible with previous approved project phases.
