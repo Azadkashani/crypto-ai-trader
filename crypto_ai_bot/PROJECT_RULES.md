@@ -1,14 +1,16 @@
-# PROJECT_RULES.md
+# PROJECT RULES
 
-# Crypto AI Bot
+Project Name:
+Crypto AI Bot
 
-Version: 1.0
+Version:
+1.0
 
 ---
 
 # Project Goal
 
-The goal of this project is to build a professional AI-powered Futures Trading Bot capable of scanning the Top 50 Futures markets 24/7 and automatically selecting the best trading opportunity based on multiple analysis engines.
+Build a professional AI-powered Futures Trading Bot capable of scanning the Top 50 Futures markets 24/7 and automatically selecting the best trading opportunity based on Technical Analysis, Fundamental Analysis and Market Sentiment.
 
 The bot will eventually execute trades automatically on a VPS.
 
@@ -16,29 +18,21 @@ The bot will eventually execute trades automatically on a VPS.
 
 # Trading Mode
 
-Current Development Target:
-
 FUTURES ONLY
 
-The project was originally created for Spot Trading.
+This project was originally developed for Spot Trading.
 
-From this point forward every new implementation must be designed for Futures Trading.
-
-Spot logic may only be reused if it is also valid for Futures.
+From this version onward every new implementation must be designed for Futures Trading.
 
 ---
 
 # Risk Management
 
-The following rules are mandatory.
-
-1. Maximum one open position at any time.
+1. Only one open position at any time.
 
 2. Risk exactly 1% of Futures account balance per trade.
 
-3. Minimum Risk Reward Ratio:
-
-RR >= 2
+3. Minimum Risk Reward Ratio = 2
 
 4. Position Size and Leverage must always be calculated from the 1% risk rule.
 
@@ -46,58 +40,7 @@ RR >= 2
 
 ---
 
-# Development Rules
-
-Development must always be completed step by step.
-
-A new step must NEVER begin before:
-
-- Implementation is complete
-- Testing is complete
-- Bugs are fixed
-- Step is approved
-
-Never skip steps.
-
----
-
-# Phase Order
-
-Phase 1
-Technical Analysis Engine
-
-Phase 2
-Fundamental Analysis Engine
-
-Phase 3
-Market Sentiment Engine
-
-Phase 4
-Final Scoring Engine
-
-Phase 5
-Trade Management
-
-Phase 6
-Risk Management
-
-Phase 7
-Execution Engine
-
-Phase 8
-Backtesting
-
-Phase 9
-Paper Trading
-
-Phase 10
-Live Trading
-
----
-
-# Scoring System
-
-Final Score consists of:
+# Final Scoring
 
 Technical Score = 80%
 
@@ -110,8 +53,6 @@ Final Score = Weighted Combination
 ---
 
 # Technical Analysis Components
-
-Technical Score will eventually include:
 
 1. Market Structure
 
@@ -141,52 +82,46 @@ Technical Score will eventually include:
 
 14. Divergence
 
-Each component will be implemented separately and tested separately.
+---
+
+# Development Rules
+
+Development must always be completed step by step.
+
+No new step may begin until:
+
+- Implementation is complete.
+- Testing is complete.
+- Bugs are fixed.
+- Step is approved.
 
 ---
 
-# Code Quality Rules
+# Code Quality
 
 Every module must:
 
-- Be modular
-- Be reusable
-- Have clean architecture
-- Use clear comments
-- Include docstrings
-- Avoid hardcoded values
-- Read configuration from config.py whenever possible
+- Be modular.
+- Be reusable.
+- Use clean architecture.
+- Use config.py whenever possible.
+- Avoid hardcoded values.
+- Include comments and docstrings.
 
 ---
 
 # Codex Rules
 
-Before every task Codex must:
+Before every task:
 
-Read this PROJECT_RULES.md file.
+Read PROJECT_RULES.md
 
-Only perform the requested Step.
+Read PROJECT_PROGRESS.md
 
-Never continue to another Step automatically.
+Only implement the requested step.
 
-Never redesign unrelated files.
+Never continue automatically.
 
-Never change project architecture unless requested.
+Never modify unrelated modules.
 
-Always explain changes briefly after implementation.
-
----
-
-# Testing Rules
-
-Every implementation must be tested before moving to the next step.
-
-If any bug exists:
-
-Fix first.
-
-Continue later.
-
----
-
-End of Version 1.0
+Always stop after finishing the requested step.
