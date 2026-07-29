@@ -88,13 +88,16 @@ class MarketStructure:
         bos_events = []
         choch_events = []
 
+        # وضعیت فعلی روند بر اساس شکست‌ها
+        direction = "sideways"
+
         for p in points:
             idx = p["index"]
             price = p["price"]
             close = float(df["close"].iloc[idx])   # Close کندل متناظر با Swing
 
             if p["type"] == "high":
-                # روند قبل از این Swing
+                # روند قبل از این Swing (بر اساس الگوی قیمتی)
                 trend_before = cls._get_trend(prev_highs, prev_lows)
                 last_high = prev_highs[-1] if prev_highs else None
 
@@ -113,12 +116,14 @@ class MarketStructure:
                                 "price": price,
                                 "type": "bullish"
                             })
+                            direction = "bullish"
                         else:  # bullish یا sideways
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
                                 "type": "bullish"
                             })
+                            direction = "bullish"
 
                 # به‌روزرسانی لیست‌ها
                 prev_highs.append(price)
@@ -145,12 +150,14 @@ class MarketStructure:
                                 "price": price,
                                 "type": "bearish"
                             })
+                            direction = "bearish"
                         else:  # bearish یا sideways
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
                                 "type": "bearish"
                             })
+                            direction = "bearish"
 
                 prev_lows.append(price)
                 labeled_lows.append({
@@ -159,8 +166,9 @@ class MarketStructure:
                     "label": label
                 })
 
-        # روند نهایی بر اساس کل Swingهای مشاهده‌شده
-        final_trend = cls._get_trend(prev_highs, prev_lows)
+        # روند نهایی: آخرین وضعیت تأییدشده توسط شکست‌های معتبر
+        final_trend = direction  # "bullish", "bearish" یا "sideways"
+
         last_high_val = labeled_highs[-1]["price"] if labeled_highs else None
         last_low_val = labeled_lows[-1]["price"] if labeled_lows else None
 
