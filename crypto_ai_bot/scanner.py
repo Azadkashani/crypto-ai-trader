@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine (Balanced)
+Market Scanner + Multi Timeframe Engine (Balanced & Professional)
 """
 
 from market_structure import MarketStructure
@@ -66,6 +66,21 @@ class MarketScanner:
 
                 strength = TrendEngine.strength(df)
 
+                # دلایل ضعف روند
+                weak_reasons = []
+                if strength in ("Weak", "Medium"):
+                    last_tmp = df.iloc[-1]
+                    if last_tmp["ADX"] < 20:
+                        weak_reasons.append("Low ADX")
+                    if abs(last_tmp["EMA20"] - last_tmp["EMA50"]) / last_tmp["EMA50"] < 0.01:
+                        weak_reasons.append("Small EMA spread")
+                    if last_tmp["volume"] <= last_tmp["AVG_VOLUME"]:
+                        weak_reasons.append("No volume confirmation")
+                if weak_reasons:
+                    weak_msg = "Weak: " + ", ".join(weak_reasons)
+                else:
+                    weak_msg = None
+
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
                 analysis = ScoringEngine.calculate(
@@ -83,6 +98,9 @@ class MarketScanner:
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
 
+                if weak_msg:
+                    warnings.append(weak_msg)
+
                 # تعیین Action اولیه
                 action = ScoringEngine.action(score, breakout)
 
@@ -90,36 +108,43 @@ class MarketScanner:
                 atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
                 resistance_20 = df["high"].tail(20).max()
                 support_20 = df["low"].tail(20).min()
-                distance_to_res = (resistance_20 - last["close"]) / atr_val
+                distance_pct = (resistance_20 - last["close"]) / last["close"] * 100 if last["close"] > 0 else 100
 
-                # فیلتر BUY سختگیرانه
+                # فیلترهای هوشمند Action
                 if action in ["BUY", "BUY BREAKOUT"]:
                     bos = market_structure.get("bos", [])
                     last_bos = bos[-1] if bos else None
                     has_bos = last_bos and ((trend == "Bullish" and last_bos["type"] == "bullish") or
                                             (trend == "Bearish" and last_bos["type"] == "bearish"))
-                    choch = market_structure.get("choch", [])
-                    last_choch = choch[-1] if choch else None
-                    opposing_choch = last_choch and ((trend == "Bullish" and last_choch["type"] == "bearish") or
-                                                     (trend == "Bearish" and last_choch["type"] == "bullish"))
+                    last_event = market_structure.get("last_event")
+                    opposing_choch = (last_event and last_event["event"] == "choch" and
+                                      ((trend == "Bullish" and last_event["type"] == "bearish") or
+                                       (trend == "Bearish" and last_event["type"] == "bullish")))
                     vol_ok = last["volume"] > last["AVG_VOLUME"]
                     mtf_ok = (trend == "Bullish" and "Bullish" in mtf_signal) or \
                              (trend == "Bearish" and "Bearish" in mtf_signal)
                     adx_ok = last["ADX"] >= 20
-                    location_ok = distance_to_res >= 2.0
+                    location_ok = distance_pct >= 2.0
                     rr_ok = (last["close"] - support_20) / atr_val >= 1.5
 
                     if not (has_bos and vol_ok and mtf_ok and adx_ok and location_ok and rr_ok and not opposing_choch):
                         action = "WATCH"
-                        if not has_bos: warnings.append("No BOS")
-                        if not vol_ok: warnings.append("Low Volume")
-                        if not mtf_ok: warnings.append("MTF Not Aligned")
-                        if not adx_ok: warnings.append("ADX < 20")
-                        if not location_ok: warnings.append("Near Resistance")
-                        if not rr_ok: warnings.append("Low R/R")
-                        if opposing_choch: warnings.append("Opposing CHoCH")
+                        if not has_bos:
+                            warnings.append("No BOS")
+                        if not vol_ok:
+                            warnings.append("Low Volume")
+                        if not mtf_ok:
+                            warnings.append("MTF Not Aligned")
+                        if not adx_ok:
+                            warnings.append("ADX < 20")
+                        if not location_ok:
+                            warnings.append("Near Resistance (<2%)")
+                        if not rr_ok:
+                            warnings.append("Low R/R")
+                        if opposing_choch:
+                            warnings.append("Opposing CHoCH active")
 
-                # WATCH فقط در صورت وجود BOS و امتیاز حداقل ۴۵
+                # WATCH فقط با BOS و امتیاز حداقل ۴۵
                 if action == "WATCH":
                     bos = market_structure.get("bos", [])
                     if not bos or score < 45:
