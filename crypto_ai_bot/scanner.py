@@ -66,7 +66,7 @@ class MarketScanner:
 
                 strength = TrendEngine.strength(df)
 
-                # دلایل ضعف روند
+                # دلایل ضعف روند (بدون تکرار با Low Volume)
                 weak_reasons = []
                 if strength in ("Weak", "Medium"):
                     last_tmp = df.iloc[-1]
@@ -76,10 +76,9 @@ class MarketScanner:
                         weak_reasons.append("Small EMA spread")
                     if last_tmp["volume"] <= last_tmp["AVG_VOLUME"]:
                         weak_reasons.append("No volume confirmation")
+                weak_msg = None
                 if weak_reasons:
                     weak_msg = "Weak: " + ", ".join(weak_reasons)
-                else:
-                    weak_msg = None
 
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
@@ -98,8 +97,18 @@ class MarketScanner:
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
 
+                # اضافه کردن پیام ضعف به هشدارها (در صورت وجود)
                 if weak_msg:
-                    warnings.append(weak_msg)
+                    # اگر Low Volume از قبل در هشدارها هست، عبارت تکراری No volume confirmation را از weak_msg حذف می‌کنیم
+                    if "Low Volume" in warnings and "No volume confirmation" in weak_reasons:
+                        # بازسازی weak_msg بدون No volume confirmation
+                        filtered_reasons = [r for r in weak_reasons if r != "No volume confirmation"]
+                        if filtered_reasons:
+                            weak_msg = "Weak: " + ", ".join(filtered_reasons)
+                        else:
+                            weak_msg = None
+                    if weak_msg:
+                        warnings.append(weak_msg)
 
                 # تعیین Action اولیه
                 action = ScoringEngine.action(score, breakout)
@@ -129,19 +138,19 @@ class MarketScanner:
 
                     if not (has_bos and vol_ok and mtf_ok and adx_ok and location_ok and rr_ok and not opposing_choch):
                         action = "WATCH"
-                        if not has_bos:
+                        if not has_bos and "No BOS" not in warnings:
                             warnings.append("No BOS")
-                        if not vol_ok:
+                        if not vol_ok and "Low Volume" not in warnings:
                             warnings.append("Low Volume")
-                        if not mtf_ok:
+                        if not mtf_ok and "MTF Not Aligned" not in warnings:
                             warnings.append("MTF Not Aligned")
-                        if not adx_ok:
+                        if not adx_ok and "ADX < 20" not in warnings:
                             warnings.append("ADX < 20")
-                        if not location_ok:
+                        if not location_ok and "Near Resistance (<2%)" not in warnings:
                             warnings.append("Near Resistance (<2%)")
-                        if not rr_ok:
+                        if not rr_ok and "Low R/R" not in warnings:
                             warnings.append("Low R/R")
-                        if opposing_choch:
+                        if opposing_choch and "Opposing CHoCH active" not in warnings:
                             warnings.append("Opposing CHoCH active")
 
                 # WATCH فقط با BOS و امتیاز حداقل ۴۵
@@ -153,10 +162,12 @@ class MarketScanner:
                 # فیلتر روند
                 if trend == "Bearish":
                     action = "NO TRADE"
-                    warnings.append("Bearish Trend")
+                    if "Bearish Trend" not in warnings:
+                        warnings.append("Bearish Trend")
                 elif trend == "Sideways" and action != "NO TRADE":
                     action = "WATCH"
-                    warnings.append("Sideways Trend")
+                    if "Sideways Trend" not in warnings:
+                        warnings.append("Sideways Trend")
 
                 # ساخت خروجی
                 support = round(df["low"].tail(50).min(), 4)
