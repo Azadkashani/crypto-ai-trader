@@ -58,13 +58,17 @@ class MarketScanner:
                 df = self.data.get_ohlcv(symbol)
                 df = IndicatorEngine.calculate(df)
 
-                trend = TrendEngine.detect(df)
-                strength = TrendEngine.strength(df)
-
                 # ==============================
                 # Market Structure Analysis
                 # ==============================
                 market_structure = MarketStructure.analyze(df)
+
+                # روند نهایی از ساختار بازار گرفته می‌شود
+                raw_trend = market_structure["trend"]
+                trend_map = {"bullish": "Bullish", "bearish": "Bearish", "sideways": "Sideways"}
+                trend = trend_map.get(raw_trend, "Sideways")
+
+                strength = TrendEngine.strength(df)   # قدرت همچنان از TrendEngine محاسبه می‌شود
 
                 # ==============================
                 # MTF
@@ -95,16 +99,16 @@ class MarketScanner:
                     warnings.append("Low Base Score")
 
                 # ==============================
-                # Trend Filter
+                # Trend Filter (اکنون بر اساس ساختار بازار)
                 # ==============================
                 if trend == "Sideways":
                     if action in ["BUY", "BUY BREAKOUT"]:
                         action = "WATCH"
-                        warnings.append("Sideways Trend")
+                        warnings.append("Sideways Trend (Structure)")
 
                 if trend == "Bearish":
                     action = "NO TRADE"
-                    warnings.append("Bearish Trend")
+                    warnings.append("Bearish Trend (Structure)")
 
                 last = df.iloc[-1]
 
