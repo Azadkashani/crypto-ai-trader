@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine (Final)
+Market Scanner + Multi Timeframe Engine (Balanced)
 """
 
 from market_structure import MarketStructure
@@ -40,13 +40,8 @@ class MarketScanner:
 
                 structure = MarketStructure.analyze(df)
                 trend_raw = structure["trend"]
-                if trend_raw == "bullish":
-                    trend_label = "Bullish"
-                elif trend_raw == "bearish":
-                    trend_label = "Bearish"
-                else:
-                    trend_label = "Sideways"
-
+                trend_label = "Bullish" if trend_raw == "bullish" else \
+                              "Bearish" if trend_raw == "bearish" else "Sideways"
                 mtf_results[tf] = trend_label
             except Exception:
                 mtf_results[tf] = "Neutral"
@@ -88,40 +83,31 @@ class MarketScanner:
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
 
-                # ==============================
                 # تعیین Action اولیه
-                # ==============================
                 action = ScoringEngine.action(score, breakout)
 
-                # ==============================
-                # فیلترهای سختگیرانه BUY/WATCH
-                # ==============================
                 last = df.iloc[-1]
                 atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
                 resistance_20 = df["high"].tail(20).max()
                 support_20 = df["low"].tail(20).min()
                 distance_to_res = (resistance_20 - last["close"]) / atr_val
 
-                # شرایط BUY
+                # فیلتر BUY سختگیرانه
                 if action in ["BUY", "BUY BREAKOUT"]:
                     bos = market_structure.get("bos", [])
                     last_bos = bos[-1] if bos else None
-                    has_bos = last_bos is not None and \
-                              ((trend == "Bullish" and last_bos["type"] == "bullish") or \
-                               (trend == "Bearish" and last_bos["type"] == "bearish"))
-
+                    has_bos = last_bos and ((trend == "Bullish" and last_bos["type"] == "bullish") or
+                                            (trend == "Bearish" and last_bos["type"] == "bearish"))
                     choch = market_structure.get("choch", [])
                     last_choch = choch[-1] if choch else None
-                    opposing_choch = last_choch and \
-                        ((trend == "Bullish" and last_choch["type"] == "bearish") or \
-                         (trend == "Bearish" and last_choch["type"] == "bullish"))
-
+                    opposing_choch = last_choch and ((trend == "Bullish" and last_choch["type"] == "bearish") or
+                                                     (trend == "Bearish" and last_choch["type"] == "bullish"))
                     vol_ok = last["volume"] > last["AVG_VOLUME"]
                     mtf_ok = (trend == "Bullish" and "Bullish" in mtf_signal) or \
                              (trend == "Bearish" and "Bearish" in mtf_signal)
                     adx_ok = last["ADX"] >= 20
                     location_ok = distance_to_res >= 2.0
-                    rr_ok = (last["close"] - support_20) / atr_val >= 1.5  # فاصله تا حمایت حداقل 1.5 ATR
+                    rr_ok = (last["close"] - support_20) / atr_val >= 1.5
 
                     if not (has_bos and vol_ok and mtf_ok and adx_ok and location_ok and rr_ok and not opposing_choch):
                         action = "WATCH"
@@ -133,13 +119,13 @@ class MarketScanner:
                         if not rr_ok: warnings.append("Low R/R")
                         if opposing_choch: warnings.append("Opposing CHoCH")
 
-                # تبدیل WATCH به NO TRADE اگر امتیاز پایین باشد یا BOS نباشد
+                # WATCH فقط در صورت وجود BOS و امتیاز حداقل ۴۵
                 if action == "WATCH":
                     bos = market_structure.get("bos", [])
                     if not bos or score < 45:
                         action = "NO TRADE"
 
-                # فیلتر نهایی روند
+                # فیلتر روند
                 if trend == "Bearish":
                     action = "NO TRADE"
                     warnings.append("Bearish Trend")
@@ -147,12 +133,9 @@ class MarketScanner:
                     action = "WATCH"
                     warnings.append("Sideways Trend")
 
-                # ==============================
-                # ساخت نتایج
-                # ==============================
+                # ساخت خروجی
                 support = round(df["low"].tail(50).min(), 4)
                 resistance = round(df["high"].tail(50).max(), 4)
-
                 entry = round(last["close"], 4)
                 stop_loss = round(entry - (atr_val * 1.5), 4)
                 take_profit = round(entry + (atr_val * 3), 4)
