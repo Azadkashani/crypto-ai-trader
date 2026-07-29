@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.6
-Advanced Scoring Engine (Balanced)
+Advanced Scoring Engine (Professional Calibration)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
@@ -14,145 +14,155 @@ class ScoringEngine:
 
         # ==================== محاسبه Score ====================
         score = 0.0
+        confirmations = []   # برای Confidence (نام, مقدار امتیاز)
 
         struct_trend = market_structure.get("trend", "sideways") if market_structure else "sideways"
         bos = market_structure.get("bos", []) if market_structure else []
         choch = market_structure.get("choch", []) if market_structure else []
         swing_highs = market_structure.get("swing_highs", []) if market_structure else []
         swing_lows = market_structure.get("swing_lows", []) if market_structure else []
+        last_event = market_structure.get("last_event", None) if market_structure else None
 
         last_bos = bos[-1] if bos else None
-        last_choch = choch[-1] if choch else None
+        # Opposing CHoCH فقط اگر آخرین رویداد یک CHoCH خلاف روند باشد
+        opposing_choch = False
+        if last_event and last_event["event"] == "choch":
+            if (struct_trend == "bullish" and last_event["type"] == "bearish") or \
+               (struct_trend == "bearish" and last_event["type"] == "bullish"):
+                opposing_choch = True
 
         # 1. Market Structure
         if struct_trend == "bullish":
-            score += 3
+            score += 7
         elif struct_trend == "bearish":
-            score -= 3
+            score -= 7
 
         if last_bos:
             if last_bos["type"] == "bullish":
-                score += 8
+                score += 12
+                confirmations.append(("BOS Bullish Break", 20))
             else:
-                score -= 8
+                score -= 12
 
         # HH/HL pattern
         if len(swing_highs) >= 2 and len(swing_lows) >= 2:
             if swing_highs[-2]["label"] == "HH" and swing_lows[-2]["label"] == "HL":
                 if struct_trend == "bullish":
-                    score += 4
-            elif swing_highs[-2]["label"] == "LH" and swing_lows[-2]["label"] == "LL":
-                if struct_trend == "bearish":
-                    score -= 4
+                    score += 6
+                    confirmations.append(("HH+HL Structure", 10))
 
         # 2. Multi Timeframe
         mtf_delta = 0
         if mtf_signal == "Strong Bullish":
-            mtf_delta = 8
+            mtf_delta = 15
+            confirmations.append(("MTF Strong Bullish", 15))
         elif mtf_signal == "Bullish":
-            mtf_delta = 4
+            mtf_delta = 10
+            confirmations.append(("MTF Bullish", 10))
         elif mtf_signal == "Bearish":
-            mtf_delta = -4
+            mtf_delta = -10
         elif mtf_signal == "Strong Bearish":
-            mtf_delta = -8
+            mtf_delta = -15
         score += mtf_delta
 
+        # Alignment MTF
         if (struct_trend == "bullish" and "Bullish" in mtf_signal) or \
            (struct_trend == "bearish" and "Bearish" in mtf_signal):
-            score += 2
+            score += 4
+            confirmations.append(("MTF Alignment", 10))
 
         # 3. EMA
+        ema_score = 0
         if last["EMA20"] > last["EMA50"]:
-            score += 5
+            ema_score += 8
         if last["EMA50"] > last["EMA200"]:
-            score += 5
+            ema_score += 8
+        score += ema_score
+        if ema_score == 16:
+            confirmations.append(("EMA Alignment", 8))
 
         # 4. ADX & DI
         if last["ADX"] >= 25:
-            score += 5
+            score += 8
+            confirmations.append(("Strong ADX", 8))
         if last["+DI"] > last["-DI"]:
-            score += 3
+            score += 5
         elif last["-DI"] > last["+DI"]:
-            score -= 3
+            score -= 5
 
         # 5. RSI
         rsi = last["RSI"]
         if 45 <= rsi <= 65:
-            score += 5
+            score += 8
+            confirmations.append(("Healthy RSI", 5))
         elif 65 < rsi <= 75 and last["ADX"] >= 25:
-            score += 3
+            score += 6
 
         # 6. MACD
         if last["MACD"] > last["MACD_SIGNAL"]:
-            score += 5
+            score += 8
+            confirmations.append(("Bullish MACD", 5))
 
         # 7. Volume
         if last["volume"] > last["AVG_VOLUME"]:
-            score += 5
+            score += 8
+            confirmations.append(("High Volume", 10))
 
         # 8. Volume Breakout
         resistance_20 = df["high"].tail(20).max()
         if last["close"] > resistance_20 and last["volume"] > 1.2 * last["AVG_VOLUME"]:
-            score += 5
+            score += 8
+            confirmations.append(("Volume Breakout", 5))
 
-        # 9. Location Penalty (کاهش یافته)
-        atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
-        distance_to_res = (resistance_20 - last["close"]) / atr_val
+        # 9. Location Penalty (فقط زیر ۲٪)
+        distance_pct = (resistance_20 - last["close"]) / last["close"] * 100 if last["close"] > 0 else 100
         location_penalty = 0
-        if distance_to_res < 2.0:
+        if distance_pct < 2.0:
             location_penalty = 5
             score -= location_penalty
 
-        # 10. CHoCH Penalty (کاهش یافته)
+        # 10. Opposing CHoCH Penalty
         choch_penalty = 0
-        if last_choch:
-            if (struct_trend == "bullish" and last_choch["type"] == "bearish") or \
-               (struct_trend == "bearish" and last_choch["type"] == "bullish"):
-                choch_penalty = 3
-                score -= choch_penalty
+        if opposing_choch:
+            choch_penalty = 8
+            score -= choch_penalty
 
-        # ذخیره Base Score
         base_score = score
 
-        # Strength Factor (نرم‌تر)
+        # Strength Factor
         if strength == "Weak":
             score *= 0.8
         elif strength == "Medium":
             score *= 0.9
-        # Very Strong: بدون تغییر
+        # Very Strong بدون تغییر
 
-        # محدودسازی Score
         score = max(0, min(100, score))
 
         # ==================== محاسبه Confidence ====================
-        conf = 30.0
-
-        if last_bos:
-            conf += 20
-        if (struct_trend == "bullish" and "Bullish" in mtf_signal) or \
-           (struct_trend == "bearish" and "Bearish" in mtf_signal):
-            conf += 15
-        if last["volume"] > last["AVG_VOLUME"]:
-            conf += 10
-        if strength in ("Strong", "Very Strong"):
-            conf += 10
-        if len(swing_highs) >= 2 and len(swing_lows) >= 2:
-            if swing_highs[-2]["label"] == "HH" and swing_lows[-2]["label"] == "HL":
-                conf += 10
-
-        # Penalties
-        if last_choch and ((struct_trend == "bullish" and last_choch["type"] == "bearish") or
-                           (struct_trend == "bearish" and last_choch["type"] == "bullish")):
-            conf -= 15
+        # مجموع تأییدیه‌ها
+        conf_confirm = sum(c[1] for c in confirmations) if confirmations else 0
+        # جریمه‌ها
+        conf_penalty = 0
         if location_penalty:
-            conf -= 5
+            conf_penalty += 5
+        if opposing_choch:
+            conf_penalty += 20
+        if strength == "Weak":
+            conf_penalty += 15
+        elif strength == "Medium":
+            conf_penalty += 5
+        if last["ADX"] < 15:
+            conf_penalty += 10
 
-        conf = max(10, min(90, conf))
+        raw_conf = 30 + conf_confirm - conf_penalty
+        confidence = (raw_conf + score) / 2   # ترکیب با Score
+        confidence = max(10, min(90, confidence))
 
         # ==================== Reasons و Warnings ====================
         reasons = []
         warnings = []
 
+        # اولویت‌بندی دلایل: Market Structure, BOS, MTF, EMA, ADX, Volume, RSI, MACD
         if struct_trend == "bullish":
             reasons.append("Market Structure Bullish")
         elif struct_trend == "bearish":
@@ -164,10 +174,8 @@ class ScoringEngine:
             else:
                 warnings.append("BOS Bearish Break")
 
-        if last_choch:
-            if (struct_trend == "bullish" and last_choch["type"] == "bearish") or \
-               (struct_trend == "bearish" and last_choch["type"] == "bullish"):
-                warnings.append("Opposing CHoCH")
+        if opposing_choch:
+            warnings.append("Opposing CHoCH (active)")
 
         if "Bullish" in mtf_signal:
             reasons.append(f"MTF {mtf_signal}")
@@ -198,16 +206,22 @@ class ScoringEngine:
             warnings.append("Low Volume")
 
         if location_penalty:
-            warnings.append("Price Near Resistance")
+            warnings.append(f"Price Near Resistance ({distance_pct:.1f}%)")
 
+        # محدود به ۵ دلیل
         reasons = reasons[:5]
-        warnings.sort(key=lambda w: "CHoCH" in w, reverse=True)
+
+        # حذف هشدارهای تکراری یا کم‌اهمیت
+        if "Low Volume" in warnings and "High Volume" in reasons:
+            warnings.remove("Low Volume")
+        if "Opposing CHoCH (active)" in warnings and not opposing_choch:
+            warnings.remove("Opposing CHoCH (active)")
 
         return {
             "base_score": int(base_score),
             "mtf_bonus": int(mtf_delta),
             "score": int(round(score)),
-            "confidence": int(round(conf)),
+            "confidence": int(round(confidence)),
             "breakout": last["close"] > resistance_20 and last["volume"] > 1.2 * last["AVG_VOLUME"],
             "reasons": reasons,
             "warnings": warnings
