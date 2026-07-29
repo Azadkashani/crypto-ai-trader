@@ -138,7 +138,7 @@ class MarketScanner:
                     "Entry": entry,
                     "StopLoss": stop_loss,
                     "TakeProfit": take_profit,
-                    "Breakout": breakout,
+                    "Volume Breakout": breakout,   # تغییر نام از Breakout به Volume Breakout
                     "Reasons": ", ".join(reasons),
                     "Warnings": ", ".join(warnings)
                 })
