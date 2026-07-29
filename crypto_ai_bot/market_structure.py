@@ -27,16 +27,34 @@ class MarketStructure:
         )
 
     @staticmethod
-    def _confirm_break(price, level, close, direction):
+    def _confirm_break(df, i, level, direction):
         """
-        بررسی تأیید شکست با استفاده از کندل Close
-        direction: 'bullish' (شکست مقاومت) یا 'bearish' (شکست حمایت)
+        تأیید شکست ساختاری با Close، حجم و ATR
         """
+        close = float(df["close"].iloc[i])
+        volume = float(df["volume"].iloc[i])
+        avg_volume = float(df["AVG_VOLUME"].iloc[i])
+
+        # شرط اصلی: Close فراتر از سطح
         if direction == "bullish":
-            return price > level and close > level
-        elif direction == "bearish":
-            return price < level and close < level
-        return False
+            if not (close > level):
+                return False
+        else:  # bearish
+            if not (close < level):
+                return False
+
+        # شرط حجم: حجم باید بالاتر از میانگین باشد
+        if volume < avg_volume:
+            return False
+
+        # شرط فاصله بر اساس ATR (در صورت وجود)
+        if "ATR" in df.columns:
+            atr = float(df["ATR"].iloc[i])
+            distance = abs(close - level)
+            if distance < 0.2 * atr:
+                return False
+
+        return True
 
     @classmethod
     def analyze(cls, df):
@@ -76,28 +94,26 @@ class MarketStructure:
         # وضعیت فعلی روند فقط با BOS تغییر می‌کند
         direction = "sideways"
 
-        # پرچم برای جلوگیری از CHoCH تکراری تا زمان تغییر روند
+        # پرچم برای جلوگیری از CHoCH تکراری تا زمان BOS
         choch_triggered = {"bullish": False, "bearish": False}
 
         for p in points:
             idx = p["index"]
             price = p["price"]
-            close = float(df["close"].iloc[idx])   # Close کندل متناظر با Swing
 
             if p["type"] == "high":
                 last_high = prev_highs[-1] if prev_highs else None
 
-                # تعیین برچسب HH/LH بر اساس مقایسه با High قبلی
+                # تعیین برچسب HH/LH
                 if last_high is None:
                     label = None
                 else:
                     label = "HH" if price > last_high else "LH"
 
-                # تشخیص BOS/CHoCH
+                # تشخیص BOS/CHoCH با تأییدیه‌های جدید
                 if last_high is not None and price > last_high:
-                    if cls._confirm_break(price, last_high, close, "bullish"):
+                    if cls._confirm_break(df, idx, last_high, "bullish"):
                         if direction == "bearish":
-                            # در روند نزولی، شکست صعودی = CHoCH (اخطار)
                             if not choch_triggered["bullish"]:
                                 choch_events.append({
                                     "index": idx,
@@ -107,14 +123,14 @@ class MarketStructure:
                                 choch_triggered["bullish"] = True
                             # direction تغییر نمی‌کند
                         else:
-                            # در روند صعودی یا خنثی = BOS (تأیید/شروع روند صعودی)
+                            # BOS صعودی
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
                                 "type": "bullish"
                             })
                             direction = "bullish"
-                            # بازنشانی پرچم‌های CHoCH با تغییر روند
+                            # بازنشانی پرچم‌های CHoCH
                             choch_triggered = {"bullish": False, "bearish": False}
 
                 prev_highs.append(price)
@@ -133,9 +149,8 @@ class MarketStructure:
                     label = "HL" if price > last_low else "LL"
 
                 if last_low is not None and price < last_low:
-                    if cls._confirm_break(price, last_low, close, "bearish"):
+                    if cls._confirm_break(df, idx, last_low, "bearish"):
                         if direction == "bullish":
-                            # در روند صعودی، شکست نزولی = CHoCH
                             if not choch_triggered["bearish"]:
                                 choch_events.append({
                                     "index": idx,
@@ -144,7 +159,7 @@ class MarketStructure:
                                 })
                                 choch_triggered["bearish"] = True
                         else:
-                            # در روند نزولی یا خنثی = BOS
+                            # BOS نزولی
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
