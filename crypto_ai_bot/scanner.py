@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine
+Market Scanner + Multi Timeframe Engine (Final)
 """
 
 from market_structure import MarketStructure
@@ -77,7 +77,7 @@ class MarketScanner:
                     df,
                     mtf_signal,
                     market_structure=market_structure,
-                    strength=strength        # ارسال قدرت روند
+                    strength=strength
                 )
 
                 base_score = analysis["base_score"]
@@ -88,82 +88,74 @@ class MarketScanner:
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
 
-                # ترتیب Reasons به صورت زیر تضمین شده:
-                # 1- Market Structure, BOS/CHoCH
-                # 2- MTF
-                # 3- EMA
-                # 4- ADX/DI
-                # 5- RSI
-                # 6- MACD
-                # 7- Volume
-                # (همان‌طور که در scoring.py ترتیب داده شده)
-
+                # ==============================
+                # تعیین Action اولیه
+                # ==============================
                 action = ScoringEngine.action(score, breakout)
 
                 # ==============================
-                # فیلترهای BUY سخت‌گیرانه
+                # فیلترهای سختگیرانه BUY/WATCH
                 # ==============================
+                last = df.iloc[-1]
+                atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
+                resistance_20 = df["high"].tail(20).max()
+                support_20 = df["low"].tail(20).min()
+                distance_to_res = (resistance_20 - last["close"]) / atr_val
+
+                # شرایط BUY
                 if action in ["BUY", "BUY BREAKOUT"]:
                     bos = market_structure.get("bos", [])
+                    last_bos = bos[-1] if bos else None
+                    has_bos = last_bos is not None and \
+                              ((trend == "Bullish" and last_bos["type"] == "bullish") or \
+                               (trend == "Bearish" and last_bos["type"] == "bearish"))
+
                     choch = market_structure.get("choch", [])
-                    last_volume_ratio = df["VOLUME_RATIO"].iloc[-1]
+                    last_choch = choch[-1] if choch else None
+                    opposing_choch = last_choch and \
+                        ((trend == "Bullish" and last_choch["type"] == "bearish") or \
+                         (trend == "Bearish" and last_choch["type"] == "bullish"))
 
-                    has_bos_same_direction = False
-                    if bos:
-                        last_bos = bos[-1]
-                        if (trend == "Bullish" and last_bos["type"] == "bullish") or \
-                           (trend == "Bearish" and last_bos["type"] == "bearish"):
-                            has_bos_same_direction = True
+                    vol_ok = last["volume"] > last["AVG_VOLUME"]
+                    mtf_ok = (trend == "Bullish" and "Bullish" in mtf_signal) or \
+                             (trend == "Bearish" and "Bearish" in mtf_signal)
+                    adx_ok = last["ADX"] >= 20
+                    location_ok = distance_to_res >= 2.0
+                    rr_ok = (last["close"] - support_20) / atr_val >= 1.5  # فاصله تا حمایت حداقل 1.5 ATR
 
-                    has_opposing_choch = False
-                    if choch:
-                        last_choch = choch[-1]
-                        if (trend == "Bullish" and last_choch["type"] == "bearish") or \
-                           (trend == "Bearish" and last_choch["type"] == "bullish"):
-                            has_opposing_choch = True
-
-                    volume_ok = last_volume_ratio >= 1.0
-
-                    mtf_aligned = False
-                    if trend == "Bullish" and ("Bullish" in mtf_signal):
-                        mtf_aligned = True
-                    elif trend == "Bearish" and ("Bearish" in mtf_signal):
-                        mtf_aligned = True
-
-                    if not (has_bos_same_direction and volume_ok and mtf_aligned and not has_opposing_choch):
+                    if not (has_bos and vol_ok and mtf_ok and adx_ok and location_ok and rr_ok and not opposing_choch):
                         action = "WATCH"
-                        if not has_bos_same_direction:
-                            warnings.append("Missing BOS confirmation")
-                        if not volume_ok:
-                            warnings.append("Volume below average")
-                        if not mtf_aligned:
-                            warnings.append("MTF not aligned with trend")
-                        if has_opposing_choch:
-                            warnings.append("Opposing CHoCH active")
+                        if not has_bos: warnings.append("No BOS")
+                        if not vol_ok: warnings.append("Low Volume")
+                        if not mtf_ok: warnings.append("MTF Not Aligned")
+                        if not adx_ok: warnings.append("ADX < 20")
+                        if not location_ok: warnings.append("Near Resistance")
+                        if not rr_ok: warnings.append("Low R/R")
+                        if opposing_choch: warnings.append("Opposing CHoCH")
 
-                # Base Score Filter
-                if action in ["BUY", "BUY BREAKOUT"] and base_score < 75:
-                    action = "WATCH"
-                    warnings.append("Low Base Score")
+                # تبدیل WATCH به NO TRADE اگر امتیاز پایین باشد یا BOS نباشد
+                if action == "WATCH":
+                    bos = market_structure.get("bos", [])
+                    if not bos or score < 45:
+                        action = "NO TRADE"
 
-                # Trend Filters
-                if trend == "Sideways":
-                    if action in ["BUY", "BUY BREAKOUT"]:
-                        action = "WATCH"
-                        warnings.append("Sideways Trend (Structure)")
+                # فیلتر نهایی روند
                 if trend == "Bearish":
                     action = "NO TRADE"
-                    warnings.append("Bearish Trend (Structure)")
+                    warnings.append("Bearish Trend")
+                elif trend == "Sideways" and action != "NO TRADE":
+                    action = "WATCH"
+                    warnings.append("Sideways Trend")
 
-                last = df.iloc[-1]
-
+                # ==============================
+                # ساخت نتایج
+                # ==============================
                 support = round(df["low"].tail(50).min(), 4)
                 resistance = round(df["high"].tail(50).max(), 4)
 
-                atr = float(last["ATR"])
                 entry = round(last["close"], 4)
-                stop_loss = round(entry - (atr * 1.5), 4)
-                take_profit = round(entry + (atr * 3), 4)
+                stop_loss = round(entry - (atr_val * 1.5), 4)
+                take_profit = round(entry + (atr_val * 3), 4)
 
                 results.append({
                     "Symbol": symbol,
