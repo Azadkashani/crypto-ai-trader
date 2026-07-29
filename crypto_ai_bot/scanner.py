@@ -32,19 +32,14 @@ class MarketScanner:
         return SYMBOLS
 
     def analyze_mtf(self, symbol):
-        """
-        Multi Timeframe Analysis based on Market Structure
-        """
         mtf_results = {}
         for tf in TIMEFRAMES:
             try:
                 df = self.data.get_ohlcv(symbol, timeframe=tf)
                 df = IndicatorEngine.calculate(df)
 
-                # استفاده از ساختار بازار به جای TrendEngine
                 structure = MarketStructure.analyze(df)
                 trend_raw = structure["trend"]
-                # تبدیل به فرمت نمایشی
                 if trend_raw == "bullish":
                     trend_label = "Bullish"
                 elif trend_raw == "bearish":
@@ -69,21 +64,13 @@ class MarketScanner:
                 df = self.data.get_ohlcv(symbol)
                 df = IndicatorEngine.calculate(df)
 
-                # ==============================
-                # Market Structure Analysis
-                # ==============================
                 market_structure = MarketStructure.analyze(df)
-
-                # روند نهایی از ساختار بازار گرفته می‌شود
                 raw_trend = market_structure["trend"]
                 trend_map = {"bullish": "Bullish", "bearish": "Bearish", "sideways": "Sideways"}
                 trend = trend_map.get(raw_trend, "Sideways")
 
-                strength = TrendEngine.strength(df)   # قدرت همچنان از TrendEngine محاسبه می‌شود
+                strength = TrendEngine.strength(df)
 
-                # ==============================
-                # MTF
-                # ==============================
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
                 analysis = ScoringEngine.calculate(
@@ -100,23 +87,70 @@ class MarketScanner:
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
 
+                # تنظیم Confidence بر اساس قدرت روند
+                if strength == "Weak":
+                    if confidence > 70:
+                        confidence = 70
+                        warnings.append("Weak Trend Strength - Confidence capped")
+                elif strength == "Medium":
+                    if confidence > 80:
+                        confidence = 80
+
                 action = ScoringEngine.action(score, breakout)
 
                 # ==============================
-                # Base Score Filter
+                # فیلترهای BUY سختگیرانه
                 # ==============================
+                if action in ["BUY", "BUY BREAKOUT"]:
+                    # استخراج اطلاعات لازم از ساختار
+                    bos = market_structure.get("bos", [])
+                    choch = market_structure.get("choch", [])
+                    last_volume_ratio = df["VOLUME_RATIO"].iloc[-1] if "VOLUME_RATIO" in df.columns else 1.0
+
+                    has_bos_same_direction = False
+                    if bos:
+                        last_bos = bos[-1]
+                        if (trend == "Bullish" and last_bos["type"] == "bullish") or \
+                           (trend == "Bearish" and last_bos["type"] == "bearish"):
+                            has_bos_same_direction = True
+
+                    has_opposing_choch = False
+                    if choch:
+                        last_choch = choch[-1]
+                        if (trend == "Bullish" and last_choch["type"] == "bearish") or \
+                           (trend == "Bearish" and last_choch["type"] == "bullish"):
+                            has_opposing_choch = True
+
+                    volume_ok = last_volume_ratio >= 1.0
+
+                    mtf_aligned = False
+                    if trend == "Bullish" and ("Bullish" in mtf_signal):
+                        mtf_aligned = True
+                    elif trend == "Bearish" and ("Bearish" in mtf_signal):
+                        mtf_aligned = True
+
+                    # در صورت عدم احراز هر یک از شرایط، BUY را به WATCH تبدیل کن
+                    if not (has_bos_same_direction and volume_ok and mtf_aligned and not has_opposing_choch):
+                        action = "WATCH"
+                        if not has_bos_same_direction:
+                            warnings.append("Missing BOS confirmation")
+                        if not volume_ok:
+                            warnings.append("Volume below average")
+                        if not mtf_aligned:
+                            warnings.append("MTF not aligned with trend")
+                        if has_opposing_choch:
+                            warnings.append("Opposing CHoCH active")
+
+                # Base Score Filter
                 if action in ["BUY", "BUY BREAKOUT"] and base_score < 75:
                     action = "WATCH"
                     warnings.append("Low Base Score")
 
-                # ==============================
-                # Trend Filter (اکنون بر اساس ساختار بازار)
-                # ==============================
+                # Trend Filters
                 if trend == "Sideways":
                     if action in ["BUY", "BUY BREAKOUT"]:
                         action = "WATCH"
                         warnings.append("Sideways Trend (Structure)")
-
                 if trend == "Bearish":
                     action = "NO TRADE"
                     warnings.append("Bearish Trend (Structure)")
