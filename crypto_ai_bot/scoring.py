@@ -21,8 +21,9 @@ class ScoringEngine:
         breakout = False
 
         # ==========================
-        # بخش اول: ساختار بازار (Market Structure)
+        # بخش اول: ساختار بازار
         # ==========================
+        struct_trend = "sideways"
         if market_structure is not None:
             struct_trend = market_structure.get("trend", "sideways")
             swing_highs = market_structure.get("swing_highs", [])
@@ -30,41 +31,37 @@ class ScoringEngine:
             bos = market_structure.get("bos", [])
             choch = market_structure.get("choch", [])
 
-            # روند ساختاری
+            # روند ساختاری (وزن کم)
             if struct_trend == "bullish":
-                score += 15
-                confidence += 15
+                score += 5
+                confidence += 5
                 reasons.append("Market Structure Bullish")
             elif struct_trend == "bearish":
-                score -= 15
-                confidence -= 15
+                score -= 5
+                confidence -= 5
                 warnings.append("Market Structure Bearish")
 
-            # الگوی HH/HL یا LH/LL
+            # الگوی HH/HL یا LH/LL (صرفاً توصیف)
             if len(swing_highs) >= 2 and len(swing_lows) >= 2:
                 last_hh_label = swing_highs[-2]["label"]
                 last_ll_label = swing_lows[-2]["label"]
                 if struct_trend == "bullish" and last_hh_label == "HH" and last_ll_label == "HL":
-                    score += 5
-                    confidence += 5
-                    reasons.append("Strong HH+HL Structure")
+                    reasons.append("Higher High & Higher Low")
                 elif struct_trend == "bearish" and last_hh_label == "LH" and last_ll_label == "LL":
-                    score -= 5
-                    confidence -= 5
-                    warnings.append("Strong LH+LL Structure")
+                    warnings.append("Lower High & Lower Low")
 
             # جزئیات آخرین سقف و کف
             if swing_highs:
-                last_label_h = swing_highs[-1]["label"]
-                if struct_trend == "bullish" and last_label_h == "HH":
+                label_h = swing_highs[-1]["label"]
+                if struct_trend == "bullish" and label_h == "HH":
                     reasons.append("Higher High")
-                elif struct_trend == "bearish" and last_label_h == "LH":
+                elif struct_trend == "bearish" and label_h == "LH":
                     warnings.append("Lower High")
             if swing_lows:
-                last_label_l = swing_lows[-1]["label"]
-                if struct_trend == "bullish" and last_label_l == "HL":
+                label_l = swing_lows[-1]["label"]
+                if struct_trend == "bullish" and label_l == "HL":
                     reasons.append("Higher Low")
-                elif struct_trend == "bearish" and last_label_l == "LL":
+                elif struct_trend == "bearish" and label_l == "LL":
                     warnings.append("Lower Low")
 
             # آخرین رویداد BOS / CHoCH (فقط یکی)
@@ -78,25 +75,25 @@ class ScoringEngine:
                 last_event = all_events[-1]
                 if last_event["event"] == "choch":
                     if last_event["type"] == "bullish":
-                        score += 3
+                        score += 2
                         confidence += 2
                         warnings.append("CHoCH Bullish (Potential Reversal)")
                     else:
-                        score -= 3
+                        score -= 2
                         confidence -= 2
                         warnings.append("CHoCH Bearish (Potential Reversal)")
                 else:  # bos
                     if last_event["type"] == "bullish":
-                        score += 10
-                        confidence += 10
+                        score += 8
+                        confidence += 8
                         reasons.append("BOS Bullish Break")
                     else:
-                        score -= 10
-                        confidence -= 10
+                        score -= 8
+                        confidence -= 8
                         warnings.append("BOS Bearish Break")
 
         # ==========================
-        # بخش دوم: EMA
+        # اندیکاتورهای کلاسیک
         # ==========================
         if last["EMA20"] > last["EMA50"]:
             score += 15
@@ -108,9 +105,6 @@ class ScoringEngine:
             confidence += 15
             reasons.append("EMA50 > EMA200")
 
-        # ==========================
-        # ADX + DI
-        # ==========================
         if last["ADX"] >= 25:
             score += 15
             confidence += 15
@@ -126,17 +120,11 @@ class ScoringEngine:
             score -= 5
             warnings.append("Bearish DI")
 
-        # ==========================
-        # MACD
-        # ==========================
         if last["MACD"] > last["MACD_SIGNAL"]:
             score += 15
             confidence += 15
             reasons.append("Bullish MACD")
 
-        # ==========================
-        # RSI
-        # ==========================
         rsi = last["RSI"]
         if 45 <= rsi <= 65:
             score += 15
@@ -154,16 +142,13 @@ class ScoringEngine:
         elif rsi > 75:
             warnings.append("Overbought RSI")
 
-        # ==========================
-        # Volume
-        # ==========================
         if last["volume"] > last["AVG_VOLUME"]:
             score += 15
             confidence += 15
             reasons.append("High Volume")
 
         # ==========================
-        # Breakout Detection
+        # Volume Breakout (شکست کانال)
         # ==========================
         resistance = df["high"].tail(50).max()
         if last["close"] > resistance and last["volume"] > last["AVG_VOLUME"]:
@@ -172,7 +157,7 @@ class ScoringEngine:
             reasons.append("Volume Breakout")
 
         # ==========================
-        # Base Score
+        # Base Score (تا اینجا)
         # ==========================
         base_score = score
 
@@ -199,6 +184,18 @@ class ScoringEngine:
 
         score += mtf_delta
 
+        # ==========================
+        # امتیاز هم‌جهتی ساختار با MTF
+        # ==========================
+        if struct_trend == "bullish" and "Bullish" in mtf_signal:
+            score += 5
+            confidence += 5
+            reasons.append("Structure & MTF Alignment")
+        elif struct_trend == "bearish" and "Bearish" in mtf_signal:
+            score -= 5
+            confidence -= 5
+            warnings.append("Structure & MTF Alignment Bearish")
+
         # محدودسازی
         score = max(0, min(score, 100))
         confidence = max(0, min(confidence, 100))
@@ -208,7 +205,7 @@ class ScoringEngine:
             "mtf_bonus": mtf_delta,
             "score": score,
             "confidence": confidence,
-            "breakout": breakout,
+            "breakout": breakout,          # این همان Volume Breakout است
             "reasons": reasons,
             "warnings": warnings
         }
