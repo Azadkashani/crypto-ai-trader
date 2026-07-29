@@ -9,6 +9,26 @@ from config import (
     USE_ALL_MARKETS,
     MAX_SYMBOLS,
     TOP_RESULTS,
+    ENABLE_LIQUIDITY_SWEEP,
+    ENABLE_FVG,
+    ENABLE_ORDER_BLOCK,
+    ENABLE_PREMIUM_DISCOUNT,
+    ENABLE_VOLUME_PROFILE,
+    ENABLE_VWAP,
+    ENABLE_OPEN_INTEREST,
+    ENABLE_FUNDING_RATE,
+    ENABLE_ATR_VOLATILITY,
+    ENABLE_EMA_SLOPE,
+    ENABLE_RSI_DIVERGENCE,
+    ENABLE_MACD_DIVERGENCE,
+    ENABLE_CANDLESTICK_PATTERNS,
+    ENABLE_SR_STRENGTH,
+    ENABLE_BREAKOUT_QUALITY,
+    ENABLE_TRENDLINE_BREAK,
+    ENABLE_FIBONACCI,
+    ENABLE_SESSION_DETECTION,
+    ENABLE_MARKET_REGIME,
+    ENABLE_CORRELATION_FILTER,
 )
 
 from data import MarketData
@@ -101,7 +121,6 @@ class MarketScanner:
                 if weak_msg:
                     # اگر Low Volume از قبل در هشدارها هست، عبارت تکراری No volume confirmation را از weak_msg حذف می‌کنیم
                     if "Low Volume" in warnings and "No volume confirmation" in weak_reasons:
-                        # بازسازی weak_msg بدون No volume confirmation
                         filtered_reasons = [r for r in weak_reasons if r != "No volume confirmation"]
                         if filtered_reasons:
                             weak_msg = "Weak: " + ", ".join(filtered_reasons)
@@ -169,6 +188,23 @@ class MarketScanner:
                     if "Sideways Trend" not in warnings:
                         warnings.append("Sideways Trend")
 
+                # ==============================
+                # Advanced Analytics (در صورت فعال بودن)
+                # ==============================
+                advanced_data = None
+                if any([
+                    ENABLE_LIQUIDITY_SWEEP, ENABLE_FVG, ENABLE_ORDER_BLOCK,
+                    ENABLE_PREMIUM_DISCOUNT, ENABLE_VOLUME_PROFILE, ENABLE_VWAP,
+                    ENABLE_OPEN_INTEREST, ENABLE_FUNDING_RATE, ENABLE_ATR_VOLATILITY,
+                    ENABLE_EMA_SLOPE, ENABLE_RSI_DIVERGENCE, ENABLE_MACD_DIVERGENCE,
+                    ENABLE_CANDLESTICK_PATTERNS, ENABLE_SR_STRENGTH, ENABLE_BREAKOUT_QUALITY,
+                    ENABLE_TRENDLINE_BREAK, ENABLE_FIBONACCI, ENABLE_SESSION_DETECTION,
+                    ENABLE_MARKET_REGIME, ENABLE_CORRELATION_FILTER
+                ]):
+                    from advanced_analytics import AdvancedAnalytics
+                    aa = AdvancedAnalytics(data_engine=self.data)
+                    advanced_data = aa.analyze(df, market_structure=market_structure, symbol=symbol)
+
                 # ساخت خروجی
                 support = round(df["low"].tail(50).min(), 4)
                 resistance = round(df["high"].tail(50).max(), 4)
@@ -196,7 +232,8 @@ class MarketScanner:
                     "TakeProfit": take_profit,
                     "Volume Breakout": breakout,
                     "Reasons": ", ".join(reasons),
-                    "Warnings": ", ".join(warnings)
+                    "Warnings": ", ".join(warnings),
+                    "advanced": advanced_data
                 })
 
             except Exception as e:
