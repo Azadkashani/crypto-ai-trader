@@ -32,16 +32,27 @@ class MarketScanner:
         return SYMBOLS
 
     def analyze_mtf(self, symbol):
+        """
+        Multi Timeframe Analysis based on Market Structure
+        """
         mtf_results = {}
         for tf in TIMEFRAMES:
             try:
                 df = self.data.get_ohlcv(symbol, timeframe=tf)
                 df = IndicatorEngine.calculate(df)
 
+                # استفاده از ساختار بازار به جای TrendEngine
                 structure = MarketStructure.analyze(df)
-                trend = TrendEngine.detect(df)
+                trend_raw = structure["trend"]
+                # تبدیل به فرمت نمایشی
+                if trend_raw == "bullish":
+                    trend_label = "Bullish"
+                elif trend_raw == "bearish":
+                    trend_label = "Bearish"
+                else:
+                    trend_label = "Sideways"
 
-                mtf_results[tf] = trend
+                mtf_results[tf] = trend_label
             except Exception:
                 mtf_results[tf] = "Neutral"
 
@@ -138,7 +149,7 @@ class MarketScanner:
                     "Entry": entry,
                     "StopLoss": stop_loss,
                     "TakeProfit": take_profit,
-                    "Volume Breakout": breakout,   # تغییر نام از Breakout به Volume Breakout
+                    "Volume Breakout": breakout,
                     "Reasons": ", ".join(reasons),
                     "Warnings": ", ".join(warnings)
                 })
