@@ -11,7 +11,6 @@ class PremiumDiscount:
         lows = [l["price"] for l in market_structure.get("swing_lows", [])]
         if len(highs) < 2 or len(lows) < 2:
             return {"zone": "equilibrium", "premium": False, "discount": False}
-        # محدوده نوسان از آخرین سویینگ‌ها
         range_high = max(highs[-2:])
         range_low = min(lows[-2:])
         current = df["close"].iloc[-1]
