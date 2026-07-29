@@ -76,6 +76,9 @@ class MarketStructure:
         # وضعیت فعلی روند فقط با BOS تغییر می‌کند
         direction = "sideways"
 
+        # پرچم برای جلوگیری از CHoCH تکراری تا زمان تغییر روند
+        choch_triggered = {"bullish": False, "bearish": False}
+
         for p in points:
             idx = p["index"]
             price = p["price"]
@@ -95,11 +98,13 @@ class MarketStructure:
                     if cls._confirm_break(price, last_high, close, "bullish"):
                         if direction == "bearish":
                             # در روند نزولی، شکست صعودی = CHoCH (اخطار)
-                            choch_events.append({
-                                "index": idx,
-                                "price": price,
-                                "type": "bullish"
-                            })
+                            if not choch_triggered["bullish"]:
+                                choch_events.append({
+                                    "index": idx,
+                                    "price": price,
+                                    "type": "bullish"
+                                })
+                                choch_triggered["bullish"] = True
                             # direction تغییر نمی‌کند
                         else:
                             # در روند صعودی یا خنثی = BOS (تأیید/شروع روند صعودی)
@@ -109,6 +114,8 @@ class MarketStructure:
                                 "type": "bullish"
                             })
                             direction = "bullish"
+                            # بازنشانی پرچم‌های CHoCH با تغییر روند
+                            choch_triggered = {"bullish": False, "bearish": False}
 
                 prev_highs.append(price)
                 labeled_highs.append({
@@ -129,11 +136,13 @@ class MarketStructure:
                     if cls._confirm_break(price, last_low, close, "bearish"):
                         if direction == "bullish":
                             # در روند صعودی، شکست نزولی = CHoCH
-                            choch_events.append({
-                                "index": idx,
-                                "price": price,
-                                "type": "bearish"
-                            })
+                            if not choch_triggered["bearish"]:
+                                choch_events.append({
+                                    "index": idx,
+                                    "price": price,
+                                    "type": "bearish"
+                                })
+                                choch_triggered["bearish"] = True
                         else:
                             # در روند نزولی یا خنثی = BOS
                             bos_events.append({
@@ -142,6 +151,7 @@ class MarketStructure:
                                 "type": "bearish"
                             })
                             direction = "bearish"
+                            choch_triggered = {"bullish": False, "bearish": False}
 
                 prev_lows.append(price)
                 labeled_lows.append({
