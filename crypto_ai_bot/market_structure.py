@@ -38,21 +38,6 @@ class MarketStructure:
             return price < level and close < level
         return False
 
-    @staticmethod
-    def _get_trend(highs, lows):
-        """
-        استخراج روند از ساختار HH+HL و LH+LL
-        نیاز به حداقل دو High و دو Low دارد
-        """
-        if len(highs) < 2 or len(lows) < 2:
-            return "sideways"
-        if highs[-1] > highs[-2] and lows[-1] > lows[-2]:
-            return "bullish"
-        elif highs[-1] < highs[-2] and lows[-1] < lows[-2]:
-            return "bearish"
-        else:
-            return "sideways"
-
     @classmethod
     def analyze(cls, df):
         # استخراج Swing High و Low
@@ -88,7 +73,7 @@ class MarketStructure:
         bos_events = []
         choch_events = []
 
-        # وضعیت فعلی روند بر اساس شکست‌ها
+        # وضعیت فعلی روند فقط با BOS تغییر می‌کند
         direction = "sideways"
 
         for p in points:
@@ -97,27 +82,27 @@ class MarketStructure:
             close = float(df["close"].iloc[idx])   # Close کندل متناظر با Swing
 
             if p["type"] == "high":
-                # روند قبل از این Swing (بر اساس الگوی قیمتی)
-                trend_before = cls._get_trend(prev_highs, prev_lows)
                 last_high = prev_highs[-1] if prev_highs else None
 
-                # تعیین برچسب HH/LH
+                # تعیین برچسب HH/LH بر اساس مقایسه با High قبلی
                 if last_high is None:
                     label = None
                 else:
                     label = "HH" if price > last_high else "LH"
 
-                # تشخیص BOS/CHoCH در صورت شکست صعودی
+                # تشخیص BOS/CHoCH
                 if last_high is not None and price > last_high:
                     if cls._confirm_break(price, last_high, close, "bullish"):
-                        if trend_before == "bearish":
+                        if direction == "bearish":
+                            # در روند نزولی، شکست صعودی = CHoCH (اخطار)
                             choch_events.append({
                                 "index": idx,
                                 "price": price,
                                 "type": "bullish"
                             })
-                            direction = "bullish"
-                        else:  # bullish یا sideways
+                            # direction تغییر نمی‌کند
+                        else:
+                            # در روند صعودی یا خنثی = BOS (تأیید/شروع روند صعودی)
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
@@ -125,7 +110,6 @@ class MarketStructure:
                             })
                             direction = "bullish"
 
-                # به‌روزرسانی لیست‌ها
                 prev_highs.append(price)
                 labeled_highs.append({
                     "index": idx,
@@ -134,7 +118,6 @@ class MarketStructure:
                 })
 
             else:  # low
-                trend_before = cls._get_trend(prev_highs, prev_lows)
                 last_low = prev_lows[-1] if prev_lows else None
 
                 if last_low is None:
@@ -144,14 +127,15 @@ class MarketStructure:
 
                 if last_low is not None and price < last_low:
                     if cls._confirm_break(price, last_low, close, "bearish"):
-                        if trend_before == "bullish":
+                        if direction == "bullish":
+                            # در روند صعودی، شکست نزولی = CHoCH
                             choch_events.append({
                                 "index": idx,
                                 "price": price,
                                 "type": "bearish"
                             })
-                            direction = "bearish"
-                        else:  # bearish یا sideways
+                        else:
+                            # در روند نزولی یا خنثی = BOS
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
@@ -166,8 +150,8 @@ class MarketStructure:
                     "label": label
                 })
 
-        # روند نهایی: آخرین وضعیت تأییدشده توسط شکست‌های معتبر
-        final_trend = direction  # "bullish", "bearish" یا "sideways"
+        # روند نهایی = آخرین جهت تعیین‌شده توسط BOS
+        final_trend = direction
 
         last_high_val = labeled_highs[-1]["price"] if labeled_highs else None
         last_low_val = labeled_lows[-1]["price"] if labeled_lows else None
