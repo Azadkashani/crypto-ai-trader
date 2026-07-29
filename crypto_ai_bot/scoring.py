@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.6
-Advanced Scoring Engine (Calibrated)
+Advanced Scoring Engine (Calibrated with Strength & Volume Breakout)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
@@ -9,11 +9,11 @@ from config import BUY_SCORE, WATCH_SCORE
 class ScoringEngine:
 
     @staticmethod
-    def calculate(df, mtf_signal="Neutral", market_structure=None):
+    def calculate(df, mtf_signal="Neutral", market_structure=None, strength="Medium"):
         last = df.iloc[-1]
 
         score = 0
-        confidence = 50.0        # پایه ۵۰٪
+        confidence = 40.0          # پایه جدید ۴۰٪
 
         reasons = []
         warnings = []
@@ -31,7 +31,7 @@ class ScoringEngine:
             bos = market_structure.get("bos", [])
             choch = market_structure.get("choch", [])
 
-            # روند ساختاری
+            # --- Trend ---
             if struct_trend == "bullish":
                 score += 5
                 confidence += 5
@@ -41,7 +41,7 @@ class ScoringEngine:
                 confidence -= 5
                 warnings.append("Market Structure Bearish")
 
-            # توصیف الگوی ساختاری (HH+HL یا LH+LL)
+            # --- Pattern HH+HL / LH+LL (توصیف) ---
             pattern_reason = None
             if len(swing_highs) >= 2 and len(swing_lows) >= 2:
                 last_hh = swing_highs[-2]["label"]
@@ -51,14 +51,13 @@ class ScoringEngine:
                 elif struct_trend == "bearish" and last_hh == "LH" and last_ll == "LL":
                     pattern_reason = "Bearish Structure (LH+LL)"
 
-            # در صورت وجود الگو، همان را نمایش بده، در غیر این صورت سعی کن از آخرین لیبل‌ها کمک بگیری
             if pattern_reason:
                 if struct_trend == "bullish":
                     reasons.append(pattern_reason)
                 else:
                     warnings.append(pattern_reason)
             else:
-                # نمایش آخرین لیبل‌ها به صورت جداگانه (فقط یکی)
+                # نمایش آخرین لیبل‌ها بدون تکرار
                 if swing_highs:
                     label_h = swing_highs[-1]["label"]
                     if struct_trend == "bullish" and label_h == "HH":
@@ -72,7 +71,7 @@ class ScoringEngine:
                     elif struct_trend == "bearish" and label_l == "LL":
                         warnings.append("Lower Low")
 
-            # BOS / CHoCH (آخرین رویداد)
+            # --- BOS / CHoCH (آخرین رویداد) ---
             all_events = []
             for ev in bos:
                 all_events.append({**ev, "event": "bos"})
@@ -84,15 +83,14 @@ class ScoringEngine:
                 if last_event["event"] == "choch":
                     if last_event["type"] == "bullish":
                         if struct_trend == "bearish":
-                            score -= 3      # جریمه تضاد
+                            score -= 3
                             confidence -= 4
                             warnings.append("CHoCH Bullish (Potential Reversal)")
                         else:
-                            # هم‌جهت با روند صعودی
                             score += 2
                             confidence += 2
                             reasons.append("CHoCH Bullish Confirmation")
-                    else:  # bearish choch
+                    else:  # bearish
                         if struct_trend == "bullish":
                             score -= 3
                             confidence -= 4
@@ -112,81 +110,7 @@ class ScoringEngine:
                         warnings.append("BOS Bearish Break")
 
         # ==========================
-        # اندیکاتورهای کلاسیک
-        # ==========================
-        ema_bonus = 0
-        if last["EMA20"] > last["EMA50"]:
-            ema_bonus += 10
-            reasons.append("EMA20 > EMA50")
-        if last["EMA50"] > last["EMA200"]:
-            ema_bonus += 10
-            reasons.append("EMA50 > EMA200")
-        score += ema_bonus
-        confidence += ema_bonus * 0.5
-
-        adx_bonus = 0
-        if last["ADX"] >= 25:
-            adx_bonus = 10
-            score += adx_bonus
-            confidence += adx_bonus * 0.5
-            reasons.append("Strong ADX Trend")
-        elif last["ADX"] < 15:
-            warnings.append("Weak Trend")
-
-        if last["+DI"] > last["-DI"]:
-            score += 5
-            confidence += 2
-            reasons.append("+DI > -DI")
-        elif last["-DI"] > last["+DI"]:
-            score -= 3
-            confidence -= 2
-            warnings.append("Bearish DI")
-
-        if last["MACD"] > last["MACD_SIGNAL"]:
-            score += 10
-            confidence += 5
-            reasons.append("Bullish MACD")
-
-        rsi = last["RSI"]
-        if 45 <= rsi <= 65:
-            score += 10
-            confidence += 5
-            reasons.append("Healthy RSI")
-        elif 65 < rsi <= 75:
-            if last["ADX"] >= 25:
-                score += 7
-                confidence += 3
-                reasons.append("Strong Momentum RSI")
-            else:
-                warnings.append("High RSI")
-        elif rsi < 30:
-            score += 3
-            reasons.append("Oversold RSI")
-        elif rsi > 75:
-            warnings.append("Overbought RSI")
-
-        volume_bonus = 0
-        if last["volume"] > last["AVG_VOLUME"]:
-            volume_bonus = 10
-            score += volume_bonus
-            confidence += 5
-            reasons.append("High Volume")
-
-        # Volume Breakout
-        resistance = df["high"].tail(50).max()
-        if last["close"] > resistance and last["volume"] > last["AVG_VOLUME"]:
-            breakout = True
-            score += 5
-            confidence += 3
-            reasons.append("Volume Breakout")
-
-        # ==========================
-        # Base Score
-        # ==========================
-        base_score = score
-
-        # ==========================
-        # Multi Timeframe
+        # Multi Timeframe (مستقیماً بعد از ساختار)
         # ==========================
         mtf_delta = 0
         if mtf_signal == "Strong Bullish":
@@ -208,50 +132,137 @@ class ScoringEngine:
 
         score += mtf_delta
 
-        # ==========================
-        # هم‌جهتی ساختار با MTF (با کاهش وزن)
-        # ==========================
-        alignment_bonus = 0
+        # هم‌جهتی ساختار با MTF
         if struct_trend == "bullish" and "Bullish" in mtf_signal:
-            alignment_bonus = 3
+            score += 3
+            confidence += 2
             reasons.append("Structure & MTF Alignment")
         elif struct_trend == "bearish" and "Bearish" in mtf_signal:
-            alignment_bonus = -3
+            score -= 3
+            confidence -= 2
             warnings.append("Structure & MTF Alignment Bearish")
-        score += alignment_bonus
-        confidence += alignment_bonus * 0.5
 
-        # ==========================
-        # تناقض Trend و MTF
-        # ==========================
+        # تناقض Trend-MTF
         if struct_trend == "bullish" and ("Bearish" in mtf_signal):
-            conflict_penalty = 8
-            score -= conflict_penalty
+            score -= 8
             confidence -= 7
-            warnings.append("Structure-MTF Conflict (Bullish vs Bearish)")
+            warnings.append("Structure-MTF Conflict")
         elif struct_trend == "bearish" and ("Bullish" in mtf_signal):
-            conflict_penalty = 8
-            score -= conflict_penalty
+            score -= 8
             confidence -= 7
-            warnings.append("Structure-MTF Conflict (Bearish vs Bullish)")
+            warnings.append("Structure-MTF Conflict")
 
         # ==========================
-        # محدودسازی Confidence بر اساس قدرت روند
+        # EMA (بخش اندیکاتورها)
         # ==========================
-        # strength از بیرون اعمال می‌شود (در scanner). اینجا مستقیماً نداریم،
-        # ولی می‌توانیم از ADX و حجم برای تخمین قدرت استفاده کنیم.
-        # فعلاً از strength خبر نداریم؛ scanner بعداً اعمال می‌کند.
-        # در اینجا صرفاً confidence را محدود به ۱۰-۹۰ می‌کنیم.
-        if confidence > 90:
-            confidence = 90
-        elif confidence < 10:
-            confidence = 10
+        ema_bonus = 0
+        if last["EMA20"] > last["EMA50"]:
+            ema_bonus += 10
+            reasons.append("EMA20 > EMA50")
+        if last["EMA50"] > last["EMA200"]:
+            ema_bonus += 10
+            reasons.append("EMA50 > EMA200")
+        score += ema_bonus
+        confidence += ema_bonus * 0.5
 
-        # Score هم محدود به 0-100
+        # ==========================
+        # ADX & DI
+        # ==========================
+        if last["ADX"] >= 25:
+            score += 10
+            confidence += 5
+            reasons.append("Strong ADX Trend")
+        elif last["ADX"] < 15:
+            warnings.append("Weak Trend")
+
+        if last["+DI"] > last["-DI"]:
+            score += 5
+            confidence += 2
+            reasons.append("+DI > -DI")
+        elif last["-DI"] > last["+DI"]:
+            score -= 3
+            confidence -= 2
+            warnings.append("Bearish DI")
+
+        # ==========================
+        # RSI
+        # ==========================
+        rsi = last["RSI"]
+        if 45 <= rsi <= 65:
+            score += 10
+            confidence += 5
+            reasons.append("Healthy RSI")
+        elif 65 < rsi <= 75:
+            if last["ADX"] >= 25:
+                score += 7
+                confidence += 3
+                reasons.append("Strong Momentum RSI")
+            else:
+                warnings.append("High RSI")
+        elif rsi < 30:
+            score += 3
+            reasons.append("Oversold RSI")
+        elif rsi > 75:
+            warnings.append("Overbought RSI")
+
+        # ==========================
+        # MACD
+        # ==========================
+        if last["MACD"] > last["MACD_SIGNAL"]:
+            score += 10
+            confidence += 5
+            reasons.append("Bullish MACD")
+
+        # ==========================
+        # Volume & Volume Breakout
+        # ==========================
+        if last["volume"] > last["AVG_VOLUME"]:
+            score += 10
+            confidence += 5
+            reasons.append("High Volume")
+
+        # Breakout: استفاده از مقاومت ۲۰ کندلی و آستانه حجم ۱.۲
+        resistance_20 = df["high"].tail(20).max()
+        if last["close"] > resistance_20 and last["volume"] > 1.2 * last["AVG_VOLUME"]:
+            breakout = True
+            score += 5
+            confidence += 3
+            reasons.append("Volume Breakout")
+
+        # ==========================
+        # ذخیره Base Score قبل از اعمال قدرت روند
+        # ==========================
+        base_score = score
+
+        # ==========================
+        # تأثیر قدرت روند بر Score
+        # ==========================
+        if strength == "Weak":
+            score *= 0.8
+            if confidence > 70:
+                confidence = 70
+        elif strength == "Medium":
+            score *= 0.9
+            if confidence > 80:
+                confidence = 80
+        # Very Strong بدون تغییر
+
+        # ==========================
+        # محدودیت Confidence بر اساس وجود هرگونه Warning
+        # ==========================
+        if warnings and confidence > 80:
+            confidence = 80
+
+        # محدودیت نهایی Score و Confidence
         if score > 100:
             score = 100
         elif score < 0:
             score = 0
+
+        if confidence > 90:
+            confidence = 90
+        elif confidence < 10:
+            confidence = 10
 
         return {
             "base_score": base_score,
