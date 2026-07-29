@@ -35,19 +35,16 @@ class MarketStructure:
         volume = float(df["volume"].iloc[i])
         avg_volume = float(df["AVG_VOLUME"].iloc[i])
 
-        # شرط اصلی: Close فراتر از سطح
         if direction == "bullish":
             if not (close > level):
                 return False
-        else:  # bearish
+        else:
             if not (close < level):
                 return False
 
-        # شرط حجم: حجم باید بالاتر از میانگین باشد
         if volume < avg_volume:
             return False
 
-        # شرط فاصله بر اساس ATR (در صورت وجود)
         if "ATR" in df.columns:
             atr = float(df["ATR"].iloc[i])
             distance = abs(close - level)
@@ -83,18 +80,15 @@ class MarketStructure:
         points.sort(key=lambda x: x["index"])
 
         # متغیرهای تحلیل ساختار
-        prev_highs = []   # قیمت‌های Swing High به ترتیب ظهور
-        prev_lows = []    # قیمت‌های Swing Low به ترتیب ظهور
+        prev_highs = []
+        prev_lows = []
 
         labeled_highs = []
         labeled_lows = []
         bos_events = []
         choch_events = []
 
-        # وضعیت فعلی روند فقط با BOS تغییر می‌کند
         direction = "sideways"
-
-        # پرچم برای جلوگیری از CHoCH تکراری تا زمان BOS
         choch_triggered = {"bullish": False, "bearish": False}
 
         for p in points:
@@ -104,13 +98,11 @@ class MarketStructure:
             if p["type"] == "high":
                 last_high = prev_highs[-1] if prev_highs else None
 
-                # تعیین برچسب HH/LH
                 if last_high is None:
                     label = None
                 else:
                     label = "HH" if price > last_high else "LH"
 
-                # تشخیص BOS/CHoCH با تأییدیه‌های جدید
                 if last_high is not None and price > last_high:
                     if cls._confirm_break(df, idx, last_high, "bullish"):
                         if direction == "bearish":
@@ -121,16 +113,14 @@ class MarketStructure:
                                     "type": "bullish"
                                 })
                                 choch_triggered["bullish"] = True
-                            # direction تغییر نمی‌کند
+                            # جهت تغییر نمی‌کند
                         else:
-                            # BOS صعودی
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
                                 "type": "bullish"
                             })
                             direction = "bullish"
-                            # بازنشانی پرچم‌های CHoCH
                             choch_triggered = {"bullish": False, "bearish": False}
 
                 prev_highs.append(price)
@@ -159,7 +149,6 @@ class MarketStructure:
                                 })
                                 choch_triggered["bearish"] = True
                         else:
-                            # BOS نزولی
                             bos_events.append({
                                 "index": idx,
                                 "price": price,
@@ -181,6 +170,15 @@ class MarketStructure:
         last_high_val = labeled_highs[-1]["price"] if labeled_highs else None
         last_low_val = labeled_lows[-1]["price"] if labeled_lows else None
 
+        # جمع‌آوری آخرین رویداد ساختاری (برای تشخیص Opposing CHoCH)
+        all_events = []
+        for ev in bos_events:
+            all_events.append({**ev, "event": "bos"})
+        for ev in choch_events:
+            all_events.append({**ev, "event": "choch"})
+        all_events.sort(key=lambda x: x["index"])
+        last_event = all_events[-1] if all_events else None
+
         return {
             "swing_highs": labeled_highs,
             "swing_lows": labeled_lows,
@@ -188,5 +186,6 @@ class MarketStructure:
             "last_low": last_low_val,
             "bos": bos_events,
             "choch": choch_events,
-            "trend": final_trend
+            "trend": final_trend,
+            "last_event": last_event
         }
