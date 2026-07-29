@@ -76,7 +76,8 @@ class MarketScanner:
                 analysis = ScoringEngine.calculate(
                     df,
                     mtf_signal,
-                    market_structure=market_structure
+                    market_structure=market_structure,
+                    strength=strength        # ارسال قدرت روند
                 )
 
                 base_score = analysis["base_score"]
@@ -87,25 +88,25 @@ class MarketScanner:
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
 
-                # تنظیم Confidence بر اساس قدرت روند
-                if strength == "Weak":
-                    if confidence > 70:
-                        confidence = 70
-                        warnings.append("Weak Trend Strength - Confidence capped")
-                elif strength == "Medium":
-                    if confidence > 80:
-                        confidence = 80
+                # ترتیب Reasons به صورت زیر تضمین شده:
+                # 1- Market Structure, BOS/CHoCH
+                # 2- MTF
+                # 3- EMA
+                # 4- ADX/DI
+                # 5- RSI
+                # 6- MACD
+                # 7- Volume
+                # (همان‌طور که در scoring.py ترتیب داده شده)
 
                 action = ScoringEngine.action(score, breakout)
 
                 # ==============================
-                # فیلترهای BUY سختگیرانه
+                # فیلترهای BUY سخت‌گیرانه
                 # ==============================
                 if action in ["BUY", "BUY BREAKOUT"]:
-                    # استخراج اطلاعات لازم از ساختار
                     bos = market_structure.get("bos", [])
                     choch = market_structure.get("choch", [])
-                    last_volume_ratio = df["VOLUME_RATIO"].iloc[-1] if "VOLUME_RATIO" in df.columns else 1.0
+                    last_volume_ratio = df["VOLUME_RATIO"].iloc[-1]
 
                     has_bos_same_direction = False
                     if bos:
@@ -129,7 +130,6 @@ class MarketScanner:
                     elif trend == "Bearish" and ("Bearish" in mtf_signal):
                         mtf_aligned = True
 
-                    # در صورت عدم احراز هر یک از شرایط، BUY را به WATCH تبدیل کن
                     if not (has_bos_same_direction and volume_ok and mtf_aligned and not has_opposing_choch):
                         action = "WATCH"
                         if not has_bos_same_direction:
