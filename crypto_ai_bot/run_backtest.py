@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Backtest Runner – Entry point for backtesting (with exchange selection)
+Backtest Runner – Multi-exchange support (KuCoin, Binance, Gate)
 """
 
 import argparse
@@ -28,8 +28,8 @@ def main():
                         help='Initial capital in USDT')
     parser.add_argument('--timeframe', type=str, default=TIMEFRAME,
                         help='Timeframe (e.g., 1h, 4h)')
-    parser.add_argument('--exchange', type=str, default='binance',
-                        help='Exchange to fetch data from (binance, gate)')
+    parser.add_argument('--exchange', type=str, default='kucoin',
+                        help='Exchange: binance, kucoin, gate, ...')
     parser.add_argument('--risk-per-trade', type=float, default=RISK_PER_TRADE,
                         help='Risk per trade (0.01 = 1%)')
     parser.add_argument('--leverage', type=int, default=LEVERAGE,
