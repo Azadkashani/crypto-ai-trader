@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine (Balanced & Professional)
+Market Scanner + Multi Timeframe Engine (Final Integrated)
 """
 
 from market_structure import MarketStructure
@@ -86,7 +86,7 @@ class MarketScanner:
 
                 strength = TrendEngine.strength(df)
 
-                # دلایل ضعف روند (بدون تکرار با Low Volume)
+                # دلایل ضعف روند (فقط برای نمایش در Warnings)
                 weak_reasons = []
                 if strength in ("Weak", "Medium"):
                     last_tmp = df.iloc[-1]
@@ -102,95 +102,7 @@ class MarketScanner:
 
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
-                analysis = ScoringEngine.calculate(
-                    df,
-                    mtf_signal,
-                    market_structure=market_structure,
-                    strength=strength
-                )
-
-                base_score = analysis["base_score"]
-                mtf_bonus = analysis["mtf_bonus"]
-                score = analysis["score"]
-                confidence = analysis["confidence"]
-                breakout = analysis["breakout"]
-                reasons = analysis["reasons"]
-                warnings = analysis["warnings"]
-
-                # اضافه کردن پیام ضعف به هشدارها (در صورت وجود)
-                if weak_msg:
-                    # اگر Low Volume از قبل در هشدارها هست، عبارت تکراری No volume confirmation را از weak_msg حذف می‌کنیم
-                    if "Low Volume" in warnings and "No volume confirmation" in weak_reasons:
-                        filtered_reasons = [r for r in weak_reasons if r != "No volume confirmation"]
-                        if filtered_reasons:
-                            weak_msg = "Weak: " + ", ".join(filtered_reasons)
-                        else:
-                            weak_msg = None
-                    if weak_msg:
-                        warnings.append(weak_msg)
-
-                # تعیین Action اولیه
-                action = ScoringEngine.action(score, breakout)
-
-                last = df.iloc[-1]
-                atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
-                resistance_20 = df["high"].tail(20).max()
-                support_20 = df["low"].tail(20).min()
-                distance_pct = (resistance_20 - last["close"]) / last["close"] * 100 if last["close"] > 0 else 100
-
-                # فیلترهای هوشمند Action
-                if action in ["BUY", "BUY BREAKOUT"]:
-                    bos = market_structure.get("bos", [])
-                    last_bos = bos[-1] if bos else None
-                    has_bos = last_bos and ((trend == "Bullish" and last_bos["type"] == "bullish") or
-                                            (trend == "Bearish" and last_bos["type"] == "bearish"))
-                    last_event = market_structure.get("last_event")
-                    opposing_choch = (last_event and last_event["event"] == "choch" and
-                                      ((trend == "Bullish" and last_event["type"] == "bearish") or
-                                       (trend == "Bearish" and last_event["type"] == "bullish")))
-                    vol_ok = last["volume"] > last["AVG_VOLUME"]
-                    mtf_ok = (trend == "Bullish" and "Bullish" in mtf_signal) or \
-                             (trend == "Bearish" and "Bearish" in mtf_signal)
-                    adx_ok = last["ADX"] >= 20
-                    location_ok = distance_pct >= 2.0
-                    rr_ok = (last["close"] - support_20) / atr_val >= 1.5
-
-                    if not (has_bos and vol_ok and mtf_ok and adx_ok and location_ok and rr_ok and not opposing_choch):
-                        action = "WATCH"
-                        if not has_bos and "No BOS" not in warnings:
-                            warnings.append("No BOS")
-                        if not vol_ok and "Low Volume" not in warnings:
-                            warnings.append("Low Volume")
-                        if not mtf_ok and "MTF Not Aligned" not in warnings:
-                            warnings.append("MTF Not Aligned")
-                        if not adx_ok and "ADX < 20" not in warnings:
-                            warnings.append("ADX < 20")
-                        if not location_ok and "Near Resistance (<2%)" not in warnings:
-                            warnings.append("Near Resistance (<2%)")
-                        if not rr_ok and "Low R/R" not in warnings:
-                            warnings.append("Low R/R")
-                        if opposing_choch and "Opposing CHoCH active" not in warnings:
-                            warnings.append("Opposing CHoCH active")
-
-                # WATCH فقط با BOS و امتیاز حداقل ۴۵
-                if action == "WATCH":
-                    bos = market_structure.get("bos", [])
-                    if not bos or score < 45:
-                        action = "NO TRADE"
-
-                # فیلتر روند
-                if trend == "Bearish":
-                    action = "NO TRADE"
-                    if "Bearish Trend" not in warnings:
-                        warnings.append("Bearish Trend")
-                elif trend == "Sideways" and action != "NO TRADE":
-                    action = "WATCH"
-                    if "Sideways Trend" not in warnings:
-                        warnings.append("Sideways Trend")
-
-                # ==============================
-                # Advanced Analytics (در صورت فعال بودن)
-                # ==============================
+                # Advanced Analytics (در صورت فعال بودن حداقل یکی از پرچم‌ها)
                 advanced_data = None
                 if any([
                     ENABLE_LIQUIDITY_SWEEP, ENABLE_FVG, ENABLE_ORDER_BLOCK,
@@ -205,7 +117,60 @@ class MarketScanner:
                     aa = AdvancedAnalytics(data_engine=self.data)
                     advanced_data = aa.analyze(df, market_structure=market_structure, symbol=symbol)
 
-                # ساخت خروجی
+                analysis = ScoringEngine.calculate(
+                    df,
+                    mtf_signal,
+                    market_structure=market_structure,
+                    strength=strength,
+                    advanced_data=advanced_data
+                )
+
+                base_score = analysis["base_score"]
+                mtf_bonus = analysis["mtf_bonus"]
+                score = analysis["score"]
+                confidence = analysis["confidence"]
+                breakout = analysis["breakout"]
+                reasons = analysis["reasons"]
+                warnings = analysis["warnings"]
+
+                # اضافه کردن پیام ضعف به هشدارها (بدون تکرار با Low Volume)
+                if weak_msg:
+                    if "Low Volume" in warnings and "No volume confirmation" in weak_reasons:
+                        filtered_reasons = [r for r in weak_reasons if r != "No volume confirmation"]
+                        if filtered_reasons:
+                            weak_msg = "Weak: " + ", ".join(filtered_reasons)
+                        else:
+                            weak_msg = None
+                    if weak_msg:
+                        warnings.append(weak_msg)
+
+                # ==============================
+                # Action جدید بر اساس Score و Confidence
+                # ==============================
+                if score >= 85 and confidence >= 80:
+                    action = "STRONG BUY"
+                elif score >= 75 and confidence >= 65:
+                    action = "BUY"
+                elif score >= 55:
+                    action = "WATCH"
+                else:
+                    action = "NO TRADE"
+
+                # ==============================
+                # فیلتر بحرانی: روند نزولی
+                # ==============================
+                if trend == "Bearish":
+                    action = "NO TRADE"
+                    if "Bearish Trend" not in warnings:
+                        warnings.append("Bearish Trend")
+
+                # روند خنثی فقط هشدار
+                if trend == "Sideways" and action not in ("NO TRADE",):
+                    if "Sideways Trend" not in warnings:
+                        warnings.append("Sideways Trend")
+
+                last = df.iloc[-1]
+                atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
                 support = round(df["low"].tail(50).min(), 4)
                 resistance = round(df["high"].tail(50).max(), 4)
                 entry = round(last["close"], 4)
