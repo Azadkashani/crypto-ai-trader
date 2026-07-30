@@ -145,11 +145,11 @@ class MarketScanner:
                         warnings.append(weak_msg)
 
                 # ==============================
-                # Action جدید بر اساس Score و Confidence
+                # Action جدید با آستانه‌های متعادل
                 # ==============================
-                if score >= 85 and confidence >= 80:
+                if score >= 85 and confidence >= 75:
                     action = "STRONG BUY"
-                elif score >= 75 and confidence >= 65:
+                elif score >= 75 and confidence >= 60:
                     action = "BUY"
                 elif score >= 55:
                     action = "WATCH"
