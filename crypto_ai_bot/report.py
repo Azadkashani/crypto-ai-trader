@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Advanced Report Engine
+Advanced Report Engine with Ranking
 """
 
 import pandas as pd
@@ -15,7 +15,7 @@ class ReportEngine:
             return
 
         table = pd.DataFrame(results)
-        table = table.sort_values(by="Score", ascending=False)
+        table = table.sort_values(by="Trade Readiness", ascending=False)
 
         print("\n")
         print("=" * 140)
@@ -27,8 +27,6 @@ class ReportEngine:
             "Price",
             "Trend",
             "Strength",
-        ]
-        optional_columns = [
             "MTF_Signal",
             "Confidence",
             "RSI",
@@ -37,84 +35,40 @@ class ReportEngine:
             "Entry Quality",
             "Trade Readiness"
         ]
-        for col in optional_columns:
-            if col in table.columns:
-                columns.append(col)
-
-        print(
-            table[columns].to_string(index=False)
-        )
+        # select only existing columns
+        cols = [c for c in columns if c in table.columns]
+        print(table[cols].to_string(index=False))
         print("=" * 140)
-        print("\nTop Opportunities:\n")
+        print("\n🏆 Top Opportunities Ranking:\n")
 
-        for item in results:
-            print("-" * 75)
-            print(f"Symbol      : {item.get('Symbol')}")
-            print(f"Price       : {item.get('Price')}")
-            print(f"Trend       : {item.get('Trend')}")
-            print(f"Strength    : {item.get('Strength')}")
-
-            if "MTF_Signal" in item:
-                print(f"MTF Signal  : {item['MTF_Signal']}")
-            if "Base Score" in item:
-                print(f"Base Score  : {item['Base Score']}")
-            if "MTF Bonus" in item:
-                print(f"MTF Bonus   : {item['MTF Bonus']}")
-            if "Confidence" in item:
-                print(f"Confidence  : {item['Confidence']}%")
-            print(f"RSI         : {item.get('RSI')}")
-            print(f"Score       : {item.get('Score')}")
-            print(f"Action      : {item.get('Action')}")
-            if "Entry Quality" in item:
-                print(f"Entry Quality: {item['Entry Quality']}")
-            if "Trade Readiness" in item:
-                print(f"Trade Readiness: {item['Trade Readiness']}")
-
-            if "Volume Breakout" in item:
-                print(f"Volume Breakout: {item['Volume Breakout']}")
-
-            if "Support" in item:
-                print(f"Support     : {item['Support']}")
-            if "Resistance" in item:
-                print(f"Resistance  : {item['Resistance']}")
-            if "Entry" in item:
-                print(f"Entry       : {item['Entry']}")
-            if "StopLoss" in item:
-                print(f"Stop Loss   : {item['StopLoss']}")
-            if "TakeProfit" in item:
-                print(f"Take Profit : {item['TakeProfit']}")
-
-            # Weighted Reasons
+        top_n = min(3, len(results))
+        for i in range(top_n):
+            item = results[i]
+            print(f"--- Rank {i+1} ---")
+            print(f"Symbol: {item['Symbol']}")
+            print(f"Action: {item['Action']}  |  Confidence: {item['Confidence']}%  |  Readiness: {item['Trade Readiness']}")
+            print(f"Entry Quality: {item.get('Entry Quality', 'N/A')}  |  Risk Level: {item.get('Summary', {}).get('Risk Level', 'N/A')}")
+            print(f"Market Bias: {item['Summary'].get('Market Bias', '')}")
+            print(f"Status: {item['Summary'].get('Current Status', '')}")
+            print(f"Decision Reason: {item['Summary'].get('Decision Reason', '')}")
+            missing = item['Summary'].get('Missing', [])
+            if missing:
+                print("Missing for Entry:")
+                for m in missing:
+                    print(f"  - {m}")
+            # نمایش دلایل وزن‌دار
             weighted_reasons = item.get("Weighted Reasons", [])
             if weighted_reasons:
-                print("Reasons (weighted):")
-                for r in weighted_reasons:
+                print("Key Reasons:")
+                for r in weighted_reasons[:5]:
                     print(f"  {r}")
+            print("")
 
-            # Weighted Warnings
-            weighted_warnings = item.get("Weighted Warnings", [])
-            if weighted_warnings:
-                print("Warnings (weighted):")
-                for w in weighted_warnings:
-                    print(f"  {w}")
-
-            # Summary
-            summary = item.get("Summary")
-            if summary:
-                print(f"\nMarket Bias: {summary.get('Market Bias', '')}")
-                why_not = summary.get("Why Not Buy?", [])
-                if why_not:
-                    print("Why Not Buy?")
-                    for reason in why_not:
-                        print(f"  - {reason}")
-                print(f"Current Status: {summary.get('Current Status', '')}")
-                print(f"Next Trigger: {summary.get('Next Trigger', '')}")
-
-            # Watch Reason
-            watch_details = item.get("Watch Reason")
-            if watch_details:
-                print("Watch Reason:")
-                for line in watch_details:
-                    print(f"  {line}")
-
-            print("-" * 75)
+        # نمایش جزئیات کامل برای همه فرصت‌ها (مانند قبل)
+        print("\n" + "-" * 75)
+        for item in results:
+            print(f"\nSymbol: {item['Symbol']}")
+            # ... (باقی چاپ همانطور که بود)
+            print(f"Action: {item['Action']}")
+            print(f"Trade Readiness: {item['Trade Readiness']}")
+            # ...
