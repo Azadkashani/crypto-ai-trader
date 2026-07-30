@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine (Final with Smart Analytics)
+Market Scanner + Multi Timeframe Engine (Decision Engine)
 """
 
 from market_structure import MarketStructure
@@ -38,7 +38,7 @@ from scoring import ScoringEngine
 
 from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
-from trade_analyzer import TradeAnalyzer
+from decision_engine import DecisionEngine
 
 
 class MarketScanner:
@@ -82,23 +82,9 @@ class MarketScanner:
 
                 market_structure = MarketStructure.analyze(df)
                 raw_trend = market_structure["trend"]
-                trend_map = {"bullish": "Bullish", "bearish": "Bearish", "sideways": "Sideways"}
-                trend = trend_map.get(raw_trend, "Sideways")
+                trend = raw_trend.capitalize()
 
                 strength = TrendEngine.strength(df)
-
-                weak_reasons = []
-                if strength in ("Weak", "Medium"):
-                    last_tmp = df.iloc[-1]
-                    if last_tmp["ADX"] < 20:
-                        weak_reasons.append("Low ADX")
-                    if abs(last_tmp["EMA20"] - last_tmp["EMA50"]) / last_tmp["EMA50"] < 0.01:
-                        weak_reasons.append("Small EMA spread")
-                    if last_tmp["volume"] <= last_tmp["AVG_VOLUME"]:
-                        weak_reasons.append("No volume confirmation")
-                weak_msg = None
-                if weak_reasons:
-                    weak_msg = "Weak: " + ", ".join(weak_reasons)
 
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
@@ -127,46 +113,25 @@ class MarketScanner:
                 base_score = analysis["base_score"]
                 mtf_bonus = analysis["mtf_bonus"]
                 score = analysis["score"]
-                confidence = analysis["confidence"]
                 breakout = analysis["breakout"]
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                if weak_msg:
-                    if "Low Volume" in warnings and "No volume confirmation" in weak_reasons:
-                        filtered_reasons = [r for r in weak_reasons if r != "No volume confirmation"]
-                        if filtered_reasons:
-                            weak_msg = "Weak: " + ", ".join(filtered_reasons)
-                        else:
-                            weak_msg = None
-                    if weak_msg:
-                        warnings.append(weak_msg)
-                        weighted_warnings.append(f"★★ {weak_msg}")
-
                 # ==============================
-                # Action جدید با آستانه‌های متعادل
+                # Decision Engine
                 # ==============================
-                if score >= 85 and confidence >= 75:
-                    action = "STRONG BUY"
-                elif score >= 75 and confidence >= 60:
-                    action = "BUY"
-                elif score >= 55:
-                    action = "WATCH"
-                else:
-                    action = "NO TRADE"
+                decision = DecisionEngine.evaluate(
+                    df, market_structure, mtf_signal, strength,
+                    advanced_data, score, breakout, reasons, warnings
+                )
 
-                if trend == "Bearish":
-                    action = "NO TRADE"
-                    if "Bearish Trend" not in warnings:
-                        warnings.append("Bearish Trend")
-                        weighted_warnings.append("★★★★★ Bearish Trend")
-
-                if trend == "Sideways" and action not in ("NO TRADE",):
-                    if "Sideways Trend" not in warnings:
-                        warnings.append("Sideways Trend")
-                        weighted_warnings.append("★★ Sideways Trend")
+                action = decision["action"]
+                confidence = decision["confidence"]
+                trade_readiness = decision["trade_readiness"]
+                entry_quality = decision["entry_quality"]
+                summary = decision["summary"]
 
                 last = df.iloc[-1]
                 atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
@@ -175,23 +140,6 @@ class MarketScanner:
                 entry = round(last["close"], 4)
                 stop_loss = round(entry - (atr_val * 1.5), 4)
                 take_profit = round(entry + (atr_val * 3), 4)
-
-                # محاسبات جدید
-                avg_vol = df["volume"].tail(20).mean()
-                std_vol = df["volume"].tail(20).std()
-                vol_z = (last["volume"] - avg_vol) / std_vol if std_vol > 0 else 0
-                vol_ok = vol_z > 0.5
-
-                summary = TradeAnalyzer.generate_summary(
-                    action, trend, strength, warnings, reasons, confidence
-                )
-                entry_quality = TradeAnalyzer.entry_quality(
-                    entry, support, resistance, atr_val, strength, breakout, advanced_data
-                )
-                trade_readiness = TradeAnalyzer.trade_readiness(
-                    score, confidence, trend, strength, mtf_signal, breakout, vol_ok, warnings
-                )
-                watch_details = TradeAnalyzer.watch_reason(action, trend, reasons, warnings)
 
                 results.append({
                     "Symbol": symbol,
@@ -219,12 +167,11 @@ class MarketScanner:
                     "Summary": summary,
                     "Entry Quality": entry_quality,
                     "Trade Readiness": trade_readiness,
-                    "Watch Reason": watch_details,
                     "advanced": advanced_data
                 })
 
             except Exception as e:
                 print(f"{symbol} : {e}")
 
-        results = sorted(results, key=lambda x: x["Score"], reverse=True)
+        results = sorted(results, key=lambda x: x["Trade Readiness"], reverse=True)
         return results[:TOP_RESULTS]
