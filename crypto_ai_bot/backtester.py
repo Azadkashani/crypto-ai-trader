@@ -1,9 +1,10 @@
 """
 Crypto AI Bot
-Backtester Engine – Multi-source support (KuCoin, Binance, yfinance)
+Backtester Engine – Multi-source + Mock
 """
 
 import pandas as pd
+import numpy as np
 import ccxt
 from datetime import timedelta
 from indicators import IndicatorEngine
@@ -28,7 +29,7 @@ class Backtester:
                  initial_capital, risk_per_trade, leverage, max_open_trades,
                  trailing_stop, trailing_activation,
                  fee, slippage, spread, max_hold_bars, output_dir,
-                 exchange_name='binance'):
+                 exchange_name='binance', use_mock=False):
         self.symbols = symbols
         self.start_date = pd.Timestamp(start_date)
         self.end_date = pd.Timestamp(end_date)
@@ -45,10 +46,10 @@ class Backtester:
         self.max_hold_bars = max_hold_bars
         self.output_dir = output_dir
         self.exchange_name = exchange_name
+        self.use_mock = use_mock
 
-        # راه‌اندازی صرافی (در صورت نیاز برای API)
         self.exchange = None
-        if exchange_name in ('binance', 'gate', 'kucoin'):
+        if not use_mock and exchange_name in ('binance', 'gate', 'kucoin'):
             if exchange_name == 'kucoin':
                 self.exchange = ccxt.kucoinfutures({'enableRateLimit': True})
             elif exchange_name == 'gate':
@@ -68,11 +69,40 @@ class Backtester:
         self.market_structures = {}
         self.advanced_analytics = {}
 
-    def load_data(self):
-        since = int(self.start_date.timestamp() * 1000)
+    def _generate_mock_data(self, sym):
+        """تولید داده‌های OHLCV مصنوعی برای تست بک‌تستر"""
+        np.random.seed(42)
+        dates = pd.date_range(self.start_date, self.end_date, freq=self.timeframe)
+        n = len(dates)
+        price = 100
+        prices = []
+        for _ in range(n):
+            price *= (1 + np.random.normal(0, 0.02))
+            prices.append(price)
+        df = pd.DataFrame({
+            'time': dates,
+            'open': prices,
+            'high': [p * (1 + abs(np.random.normal(0, 0.005))) for p in prices],
+            'low': [p * (1 - abs(np.random.normal(0, 0.005))) for p in prices],
+            'close': prices,
+            'volume': np.random.uniform(100, 1000, n)
+        })
+        df['high'] = df[['open', 'high', 'close']].max(axis=1)
+        df['low'] = df[['open', 'low', 'close']].min(axis=1)
+        return df
 
+    def load_data(self):
+        if self.use_mock:
+            print("Using mock data...")
+            for sym in self.symbols:
+                df = self._generate_mock_data(sym)
+                self.data[sym] = df
+                self.indicators[sym] = IndicatorEngine.calculate(df.copy())
+                print(f"Generated {len(df)} mock candles for {sym}")
+            return
+
+        since = int(self.start_date.timestamp() * 1000)
         for sym in self.symbols:
-            # 1) تلاش با API صرافی
             if self.exchange is not None:
                 try:
                     ohlcv = self.exchange.fetch_ohlcv(
@@ -81,51 +111,39 @@ class Backtester:
                         since=since,
                         limit=1000
                     )
-                    df = pd.DataFrame(
-                        ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume']
-                    )
+                    df = pd.DataFrame(ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume'])
                     df['time'] = pd.to_datetime(df['time'], unit='ms')
                     df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
                     if not df.empty:
                         df = df.reset_index(drop=True)
                         self.data[sym] = df
                         self.indicators[sym] = IndicatorEngine.calculate(df.copy())
-                        print(f"Loaded {len(df)} candles for {sym} from API")
+                        print(f"Loaded {len(df)} candles for {sym}")
                         continue
                 except Exception as e:
-                    print(f"API failed for {sym}: {e}")
+                    print(f"Exchange failed for {sym}: {e}")
 
-            # 2) Fallback: yfinance (نیاز به pip install yfinance)
+            # fallback yfinance یا csv (اختیاری)
             try:
                 import yfinance as yf
-                ticker = sym.replace("/", "-")  # BTC/USDT -> BTC-USDT
+                ticker = sym.replace("/", "-")
                 yf_ticker = yf.Ticker(ticker)
-                df = yf_ticker.history(
-                    start=self.start_date.strftime('%Y-%m-%d'),
-                    end=(self.end_date + timedelta(days=1)).strftime('%Y-%m-%d'),
-                    interval=self.timeframe
-                )
+                df = yf_ticker.history(start=self.start_date, end=self.end_date + timedelta(days=1), interval=self.timeframe)
                 if df.empty:
-                    raise ValueError("yfinance returned empty DataFrame")
-                # تنظیم ستون‌ها
+                    raise ValueError("empty")
                 df.reset_index(inplace=True)
-                df.rename(columns={
-                    'Date': 'time', 'Datetime': 'time',
-                    'Open': 'open', 'High': 'high',
-                    'Low': 'low', 'Close': 'close',
-                    'Volume': 'volume'
-                }, inplace=True)
+                df.rename(columns={'Date': 'time', 'Datetime': 'time', 'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}, inplace=True)
                 df['time'] = pd.to_datetime(df['time'])
                 df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
                 df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
                 if df.empty:
-                    raise ValueError("No data after filtering")
+                    raise ValueError("empty after filter")
                 df = df.reset_index(drop=True)
                 self.data[sym] = df
                 self.indicators[sym] = IndicatorEngine.calculate(df.copy())
                 print(f"Loaded {len(df)} candles for {sym} from yfinance")
             except Exception as e:
-                print(f"yfinance also failed for {sym}: {e}")
+                print(f"yfinance failed for {sym}: {e}")
 
     def compute_analysis(self, sym):
         if sym not in self.indicators:
