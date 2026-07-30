@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Professional Decision Engine (with News Risk)
+Professional Decision Engine (with News Risk + SELL Support)
 """
 
 from weights import WARNING_WEIGHTS, CONFIDENCE_FACTORS, REASON_WEIGHTS
@@ -22,7 +22,7 @@ class DecisionEngine:
                 opposing_choch = True
 
         # -------------------------------
-        # محاسبه Confidence (همانند قبل)
+        # محاسبه Confidence
         # -------------------------------
         conf = 0
         if trend == "bullish":
@@ -93,7 +93,7 @@ class DecisionEngine:
         if trend == "bullish":
             base_readiness += 25
         elif trend == "bearish":
-            base_readiness -= 25
+            base_readiness += 25   # هر دو روند قوی readiness را بالا می‌برند
         if strength == "Very Strong":
             base_readiness += 20
         elif strength == "Strong":
@@ -102,14 +102,22 @@ class DecisionEngine:
             base_readiness += 5
         else:
             base_readiness -= 10
-        if "Bullish" in mtf_signal:
+        # MTF: اگر با روند هم‌جهت باشد readiness افزایش می‌یابد
+        if trend == "bullish" and "Bullish" in mtf_signal:
             base_readiness += 20
-        elif "Bearish" in mtf_signal:
+        elif trend == "bearish" and "Bearish" in mtf_signal:
+            base_readiness += 20
+        elif trend == "bullish" and "Bearish" in mtf_signal:
             base_readiness -= 15
+        elif trend == "bearish" and "Bullish" in mtf_signal:
+            base_readiness -= 15
+        # breakout (حجمی)
         if breakout:
             base_readiness += 15
+        # volume
         if vol_z > 0.5:
             base_readiness += 10
+        # جریمه‌ها بر اساس شدت
         critical_penalty = 0
         major_penalty = 0
         minor_penalty = 0
@@ -125,7 +133,7 @@ class DecisionEngine:
         readiness = max(0, min(100, int(base_readiness)))
 
         # -------------------------------
-        # تصمیم‌گیری نهایی (با در نظر گرفتن ریسک رویداد)
+        # تصمیم‌گیری نهایی (با پشتیبانی از SELL)
         # -------------------------------
         has_critical = any(
             WARNING_WEIGHTS.get(w, (0, ""))[1] == "critical" for w in warnings
@@ -136,17 +144,32 @@ class DecisionEngine:
             readiness = max(0, readiness - 20)
             conf = max(10, conf - 15)
         elif trend == "bearish":
+            # منطق فروش
+            if has_critical and readiness < 80:
+                action = "NO TRADE"
+            elif readiness >= 95:
+                action = "STRONG SELL"
+            elif readiness >= 80:
+                action = "SELL"
+            elif readiness >= 60:
+                action = "WATCH"
+            else:
+                action = "NO TRADE"
+        elif trend == "bullish":
+            # منطق خرید
+            if has_critical and readiness < 80:
+                action = "NO TRADE"
+            elif readiness >= 95:
+                action = "STRONG BUY"
+            elif readiness >= 80:
+                action = "BUY"
+            elif readiness >= 60:
+                action = "WATCH"
+            else:
+                action = "NO TRADE"
+        else:  # sideways
             action = "NO TRADE"
-        elif has_critical and readiness < 80:
-            action = "NO TRADE"
-        elif readiness >= 95:
-            action = "BUY"
-        elif readiness >= 80:
-            action = "WATCH"
-        elif readiness >= 60:
-            action = "WAIT"
-        else:
-            action = "NO TRADE"
+            readiness = max(0, readiness - 20)
 
         # -------------------------------
         # Entry Quality
@@ -155,17 +178,30 @@ class DecisionEngine:
         resistance_50 = df["high"].tail(50).max()
         atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
         entry_price = last["close"]
-        dist_res = (resistance_50 - entry_price) / atr_val
-        dist_sup = (entry_price - support_50) / atr_val
-        eq_score = 0
-        if dist_res > 3:
-            eq_score += 2
-        elif dist_res > 1.5:
-            eq_score += 1
-        if dist_sup > 2:
-            eq_score += 2
-        elif dist_sup > 1:
-            eq_score += 1
+        # برای فروش، فاصله تا حمایت مهم است (برعکس خرید)
+        if trend == "bearish":
+            dist_to_support = (entry_price - support_50) / atr_val
+            dist_to_resistance = (resistance_50 - entry_price) / atr_val
+            eq_score = 0
+            if dist_to_support > 3:   # فضای کافی برای افت
+                eq_score += 2
+            elif dist_to_support > 1.5:
+                eq_score += 1
+            if dist_to_resistance > 2:  # فاصله تا مقاومت بالای سر
+                eq_score -= 1
+        else:  # خرید
+            dist_res = (resistance_50 - entry_price) / atr_val
+            dist_sup = (entry_price - support_50) / atr_val
+            eq_score = 0
+            if dist_res > 3:
+                eq_score += 2
+            elif dist_res > 1.5:
+                eq_score += 1
+            if dist_sup > 2:
+                eq_score += 2
+            elif dist_sup > 1:
+                eq_score += 1
+        # RR (همواره ۲)
         rr = 2.0
         if rr >= 2:
             eq_score += 2
@@ -180,12 +216,19 @@ class DecisionEngine:
         if breakout:
             eq_score += 3
         if advanced_data:
-            if advanced_data.get("liquidity_sweep", {}).get("buy_side_sweep"):
+            if trend == "bullish" and advanced_data.get("liquidity_sweep", {}).get("buy_side_sweep"):
+                eq_score += 2
+            if trend == "bearish" and advanced_data.get("liquidity_sweep", {}).get("sell_side_sweep"):
                 eq_score += 2
             ob = advanced_data.get("order_block", {})
-            if ob.get("valid") and ob.get("bullish_ob"):
-                eq_score += 2
-            if advanced_data.get("fvg", {}).get("bullish_fvg"):
+            if ob.get("valid"):
+                if trend == "bullish" and ob.get("bullish_ob"):
+                    eq_score += 2
+                elif trend == "bearish" and ob.get("bearish_ob"):
+                    eq_score += 2
+            if advanced_data.get("fvg", {}).get("bullish_fvg") and trend == "bullish":
+                eq_score += 1
+            if advanced_data.get("fvg", {}).get("bearish_fvg") and trend == "bearish":
                 eq_score += 1
             vp = advanced_data.get("volume_profile", {})
             if vp.get("distance_to_poc", 100) < 2:
@@ -201,7 +244,9 @@ class DecisionEngine:
         # توضیح تصمیم و وضعیت
         # -------------------------------
         if action in ("BUY", "STRONG BUY"):
-            status = "Ready for Entry"
+            status = "Ready for Long Entry"
+        elif action in ("SELL", "STRONG SELL"):
+            status = "Ready for Short Entry"
         elif action == "WATCH":
             status = "Waiting for Confirmation"
         elif action == "WAIT":
@@ -209,48 +254,55 @@ class DecisionEngine:
         elif action == "WAIT NEWS":
             status = "High-impact news approaching – Pause"
         else:
-            status = "No Trade – Bearish or Critical Issues"
+            status = "No Trade"
 
         missing = []
-        if trend != "bullish":
-            missing.append("Bullish Trend")
-        if last_bos is None:
-            missing.append("BOS Confirmation")
-        if not ("Bullish" in mtf_signal):
-            missing.append("MTF Alignment")
+        if trend == "bullish":
+            if last_bos is None or last_bos["type"] != "bullish":
+                missing.append("Bullish BOS")
+            if not ("Bullish" in mtf_signal):
+                missing.append("Bullish MTF")
+        elif trend == "bearish":
+            if last_bos is None or last_bos["type"] != "bearish":
+                missing.append("Bearish BOS")
+            if not ("Bearish" in mtf_signal):
+                missing.append("Bearish MTF")
         if vol_z <= 0.5:
             missing.append("Higher Volume")
-        if resistance_50 - last["close"] < 0.02 * last["close"]:
+        if trend == "bullish" and resistance_50 - entry_price < 0.02 * entry_price:
             missing.append("Clear Break of Resistance")
+        elif trend == "bearish" and entry_price - support_50 < 0.02 * entry_price:
+            missing.append("Clear Break of Support")
         if (rsi_div and rsi_div.get("bearish_divergence")) or (macd_div and macd_div.get("bearish_div")):
-            missing.append("Clear Divergence Signal")
+            missing.append("Clear Divergence")
         if opposing_choch:
             missing.append("CHoCH Resolution")
         if risk_event:
             missing.append("Wait for economic news to pass")
 
         decision_reason = ""
-        if action == "BUY":
+        if action in ("BUY", "STRONG BUY"):
             decision_reason = "Strong bullish alignment, high readiness and confidence."
+        elif action in ("SELL", "STRONG SELL"):
+            decision_reason = "Strong bearish alignment, high readiness and confidence."
         elif action == "WATCH":
-            decision_reason = "Bullish structure present but awaiting volume/breakout confirmation."
+            decision_reason = "Structure present but awaiting confirmation."
         elif action == "WAIT":
             decision_reason = "Multiple warnings reduce readiness; safer to wait."
         elif action == "WAIT NEWS":
             decision_reason = "High impact news event imminent – trading paused."
         else:
-            decision_reason = "Bearish trend or critical structure conflict."
+            decision_reason = "No actionable trend."
 
         risk_level = "Medium"
         if atr_vol and atr_vol.get("volatility") == "High Volatility":
             risk_level = "High"
         elif strength in ("Very Strong", "Strong") and not opposing_choch and vol_z > 0:
             risk_level = "Low"
-        else:
-            risk_level = "Medium"
 
         summary = {
-            "Market Bias": f"{'Strong ' if strength in ('Very Strong','Strong') else ''}Bullish" if trend == "bullish" else "Bearish",
+            "Market Bias": f"{'Strong ' if strength in ('Very Strong','Strong') else ''}Bullish" if trend == "bullish" else
+                           f"{'Strong ' if strength in ('Very Strong','Strong') else ''}Bearish" if trend == "bearish" else "Sideways",
             "Current Status": status,
             "Decision Reason": decision_reason,
             "Missing": missing,
