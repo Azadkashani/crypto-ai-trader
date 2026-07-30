@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine (Final Integrated)
+Market Scanner + Multi Timeframe Engine (Final with Smart Analytics)
 """
 
 from market_structure import MarketStructure
@@ -38,6 +38,7 @@ from scoring import ScoringEngine
 
 from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
+from trade_analyzer import TradeAnalyzer
 
 
 class MarketScanner:
@@ -86,7 +87,6 @@ class MarketScanner:
 
                 strength = TrendEngine.strength(df)
 
-                # دلایل ضعف روند (فقط برای نمایش در Warnings)
                 weak_reasons = []
                 if strength in ("Weak", "Medium"):
                     last_tmp = df.iloc[-1]
@@ -102,7 +102,6 @@ class MarketScanner:
 
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
-                # Advanced Analytics (در صورت فعال بودن حداقل یکی از پرچم‌ها)
                 advanced_data = None
                 if any([
                     ENABLE_LIQUIDITY_SWEEP, ENABLE_FVG, ENABLE_ORDER_BLOCK,
@@ -135,7 +134,6 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # اضافه کردن پیام ضعف به هشدارها (بدون تکرار با Low Volume)
                 if weak_msg:
                     if "Low Volume" in warnings and "No volume confirmation" in weak_reasons:
                         filtered_reasons = [r for r in weak_reasons if r != "No volume confirmation"]
@@ -145,7 +143,7 @@ class MarketScanner:
                             weak_msg = None
                     if weak_msg:
                         warnings.append(weak_msg)
-                        weighted_warnings.append(f"★★ {weak_msg}")  # وزن پیش‌فرض 2 برای ضعف روند
+                        weighted_warnings.append(f"★★ {weak_msg}")
 
                 # ==============================
                 # Action جدید با آستانه‌های متعادل
@@ -159,16 +157,12 @@ class MarketScanner:
                 else:
                     action = "NO TRADE"
 
-                # ==============================
-                # فیلتر بحرانی: روند نزولی
-                # ==============================
                 if trend == "Bearish":
                     action = "NO TRADE"
                     if "Bearish Trend" not in warnings:
                         warnings.append("Bearish Trend")
                         weighted_warnings.append("★★★★★ Bearish Trend")
 
-                # روند خنثی فقط هشدار
                 if trend == "Sideways" and action not in ("NO TRADE",):
                     if "Sideways Trend" not in warnings:
                         warnings.append("Sideways Trend")
@@ -181,6 +175,23 @@ class MarketScanner:
                 entry = round(last["close"], 4)
                 stop_loss = round(entry - (atr_val * 1.5), 4)
                 take_profit = round(entry + (atr_val * 3), 4)
+
+                # محاسبات جدید
+                avg_vol = df["volume"].tail(20).mean()
+                std_vol = df["volume"].tail(20).std()
+                vol_z = (last["volume"] - avg_vol) / std_vol if std_vol > 0 else 0
+                vol_ok = vol_z > 0.5
+
+                summary = TradeAnalyzer.generate_summary(
+                    action, trend, strength, warnings, reasons, confidence
+                )
+                entry_quality = TradeAnalyzer.entry_quality(
+                    entry, support, resistance, atr_val, strength, breakout, advanced_data
+                )
+                trade_readiness = TradeAnalyzer.trade_readiness(
+                    score, confidence, trend, strength, mtf_signal, breakout, vol_ok, warnings
+                )
+                watch_details = TradeAnalyzer.watch_reason(action, trend, reasons, warnings)
 
                 results.append({
                     "Symbol": symbol,
@@ -201,10 +212,14 @@ class MarketScanner:
                     "StopLoss": stop_loss,
                     "TakeProfit": take_profit,
                     "Volume Breakout": breakout,
-                    "Reasons": ", ".join(reasons),                     # فرمت متنی ساده
+                    "Reasons": ", ".join(reasons),
                     "Warnings": ", ".join(warnings),
-                    "Weighted Reasons": weighted_reasons,             # جدید
-                    "Weighted Warnings": weighted_warnings,           # جدید
+                    "Weighted Reasons": weighted_reasons,
+                    "Weighted Warnings": weighted_warnings,
+                    "Summary": summary,
+                    "Entry Quality": entry_quality,
+                    "Trade Readiness": trade_readiness,
+                    "Watch Reason": watch_details,
                     "advanced": advanced_data
                 })
 
