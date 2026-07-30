@@ -7,8 +7,8 @@ Configuration File (Futures)
 # Exchange Settings
 # ==========================
 EXCHANGE_NAME = "gate"
-API_KEY = ""
-API_SECRET = ""
+API_KEY = "09957d698852c4d065766202d8b2d450"
+API_SECRET = "d01b97f13c935a53fc51c99b04231a0785e0c17594137ec39445ca775551c7cc"
 TESTNET = True
 
 # ==========================
