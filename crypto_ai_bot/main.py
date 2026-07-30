@@ -47,15 +47,7 @@ def main():
         open_positions = order_mgr.check_open_positions()
         if len(open_positions) >= MAX_OPEN_TRADES:
             print("A position is already open. Waiting...")
-            # اگر تریلینگ استاپ فعال است، آن را بررسی و اعمال کن
-            if TRAILING_STOP_ENABLED and open_positions:
-                # برای سادگی، روی اولین پوزیشن باز کار می‌کنیم
-                pos = open_positions[0]
-                # محاسبه درصد سود فعلی نسبت به TP اولیه (نیاز به ذخیره TP اولیه دارد)
-                # چون TP را در response order ذخیره نکردیم، از best_trade فعلی استفاده نمی‌کنیم.
-                # راه‌اندازی کامل تریلینگ نیاز به ذخیره اطلاعات معامله دارد.
-                # به‌دلیل پیچیدگی، تریلینگ را به صورت داینامیک پیاده نمی‌کنیم.
-                pass
+            # اگر تریلینگ استاپ فعال است، آن را بررسی و اعمال کن (برای سادگی، این بخش به دلیل نیاز به ذخیره‌سازی وضعیت، کاملاً پیاده‌سازی نشده ولی منطق کلی وجود دارد)
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
@@ -91,7 +83,7 @@ def main():
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # اجرای معامله
+        # اجرای معامله (اهرم پویا درون place_market_order اعمال می‌شود)
         print(f"Opening {action} on {symbol}: Entry={entry}, SL={stop_loss}, TP={take_profit}, Qty={quantity}")
         order_result = order_mgr.place_market_order(
             symbol=symbol,
@@ -99,18 +91,17 @@ def main():
             quantity=quantity,
             stop_loss=stop_loss,
             take_profit=take_profit,
+            entry_price=entry,
         )
         print(f"Trade opened. Entry order: {order_result['entry_order']['id']}")
 
-        # بعد از باز شدن معامله، مدتی صبر می‌کنیم تا پوزیشن باز شود
-        time.sleep(5)
-
-        # نظارت بر تریلینگ استاپ تا بسته شدن معامله
+        # تریلینگ استاپ (نظارت تا بسته شدن)
         if TRAILING_STOP_ENABLED:
             tp_target = take_profit
             entry_price = entry
             sl_order_id = order_result['sl_order']['id']
             current_sl = stop_loss
+            print("Monitoring position for trailing stop...")
             while True:
                 open_positions = order_mgr.check_open_positions(symbol)
                 if not open_positions:
@@ -119,15 +110,20 @@ def main():
 
                 pos = open_positions[0]
                 current_price = float(pos.get('markPrice', 0))
-                # بررسی رسیدن به ۵۰٪ حد سود
+
                 if side == "buy":
-                    progress = (current_price - entry_price) / (tp_target - entry_price) if tp_target != entry_price else 0
+                    if tp_target != entry_price:
+                        progress = (current_price - entry_price) / (tp_target - entry_price)
+                    else:
+                        progress = 0
                 else:
-                    progress = (entry_price - current_price) / (entry_price - tp_target) if entry_price != tp_target else 0
+                    if entry_price != tp_target:
+                        progress = (entry_price - current_price) / (entry_price - tp_target)
+                    else:
+                        progress = 0
 
                 if progress >= TRAILING_STOP_ACTIVATION and current_sl != entry_price:
-                    # انتقال حد ضرر به نقطه ورود
-                    print("Activating trailing stop: Moving SL to entry.")
+                    print(f"Activating trailing stop (progress={progress:.2f}): Moving SL to entry.")
                     new_sl_order = order_mgr.modify_stop_loss(
                         symbol=symbol,
                         sl_order_id=sl_order_id,
@@ -138,7 +134,7 @@ def main():
                         sl_order_id = new_sl_order['id']
                         current_sl = entry_price
 
-                time.sleep(10)   # بررسی هر ۱۰ ثانیه
+                time.sleep(10)
 
         # بعد از بسته شدن، دوباره اسکن می‌شود
         time.sleep(SCAN_INTERVAL_MINUTES * 60)
