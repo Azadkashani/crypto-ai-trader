@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine (Decision Engine + News/Sentiment)
+Market Scanner + Multi Timeframe Engine (Decision Engine + News/Sentiment + SELL)
 """
 
 from market_structure import MarketStructure
@@ -130,9 +130,7 @@ class MarketScanner:
                 sentiment_score_val = 0
                 risk_event = False
                 if ENABLE_NEWS_ENGINE or ENABLE_SENTIMENT_ENGINE:
-                    # تحلیل اخبار خام
                     analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
-                    # فیلتر اخبار مرتبط با نماد
                     related_news = []
                     for news in analyzed_news:
                         syms = NewsMapping.get_related_symbols(news["title"])
@@ -141,8 +139,6 @@ class MarketScanner:
                     scores = NewsScoring.calculate(related_news, sentiment_data)
                     news_score_val = scores["news_score"]
                     sentiment_score_val = scores["sentiment_score"]
-
-                    # بررسی ریسک رویدادهای مهم
                     risk_event = RiskEvents.is_high_impact_near(related_news, calendar_events)
 
                 analysis = ScoringEngine.calculate(
@@ -184,8 +180,14 @@ class MarketScanner:
                 support = round(df["low"].tail(50).min(), 4)
                 resistance = round(df["high"].tail(50).max(), 4)
                 entry = round(last["close"], 4)
-                stop_loss = round(entry - (atr_val * 1.5), 4)
-                take_profit = round(entry + (atr_val * 3), 4)
+
+                # محاسبه SL/TP بر اساس جهت معامله
+                if action in ("SELL", "STRONG SELL"):
+                    stop_loss = round(entry + (atr_val * 1.5), 4)   # بالای ورود
+                    take_profit = round(entry - (atr_val * 3), 4)   # پایین‌تر
+                else:  # LONG (BUY, STRONG BUY)
+                    stop_loss = round(entry - (atr_val * 1.5), 4)
+                    take_profit = round(entry + (atr_val * 3), 4)
 
                 results.append({
                     "Symbol": symbol,
