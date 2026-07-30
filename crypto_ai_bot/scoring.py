@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.6
-Advanced Scoring Engine (Integrated)
+Advanced Scoring Engine (Integrated & Balanced)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
@@ -100,7 +100,7 @@ class ScoringEngine:
             score += 8
             reasons.append("Bullish MACD")
 
-        # 7. Volume (improved: Z-Score)
+        # 7. Volume (Z-Score)
         avg_vol = df["volume"].tail(20).mean()
         std_vol = df["volume"].tail(20).std()
         if std_vol > 0:
@@ -112,10 +112,6 @@ class ScoringEngine:
             reasons.append("High Volume")
         elif vol_z < -0.5:
             warnings.append("Low Volume")
-            # no score penalty, just warning
-        else:
-            # neutral
-            pass
 
         # 8. Volume Breakout
         resistance_20 = df["high"].tail(20).max()
@@ -126,7 +122,6 @@ class ScoringEngine:
 
         # 9. Resistance Proximity Penalty (conditional)
         distance_pct = (resistance_20 - last["close"]) / last["close"] * 100 if last["close"] > 0 else 100
-        # اگر BOS صعودی و شکست مقاومت موجود نباشد، جریمه کن
         if not breakout and not (last_bos and last_bos["type"] == "bullish"):
             if distance_pct < 2.0:
                 score -= 5
@@ -137,9 +132,8 @@ class ScoringEngine:
             score -= 8
             warnings.append("Opposing CHoCH (active)")
 
-        # 11. Advanced Analytics Contributions
+        # 11. Advanced Analytics
         if advanced_data:
-            # Liquidity Sweep
             ls = advanced_data.get("liquidity_sweep")
             if ls:
                 if ls.get("buy_side_sweep"):
@@ -149,7 +143,6 @@ class ScoringEngine:
                     score -= 5
                     warnings.append("Sell Side Liquidity Sweep")
 
-            # FVG
             fvg = advanced_data.get("fvg")
             if fvg:
                 if fvg.get("bullish_fvg") and not fvg.get("filled"):
@@ -159,18 +152,15 @@ class ScoringEngine:
                     score -= 5
                     warnings.append("Unfilled Bearish FVG")
 
-            # Order Block
             ob = advanced_data.get("order_block")
-            if ob:
-                if ob.get("valid"):
-                    if ob.get("bullish_ob"):
-                        score += 5
-                        reasons.append("Bullish Order Block")
-                    elif ob.get("bearish_ob"):
-                        score -= 5
-                        warnings.append("Bearish Order Block")
+            if ob and ob.get("valid"):
+                if ob.get("bullish_ob"):
+                    score += 5
+                    reasons.append("Bullish Order Block")
+                elif ob.get("bearish_ob"):
+                    score -= 5
+                    warnings.append("Bearish Order Block")
 
-            # Premium/Discount
             pd_zone = advanced_data.get("premium_discount")
             if pd_zone:
                 if pd_zone.get("discount"):
@@ -180,16 +170,12 @@ class ScoringEngine:
                     score -= 4
                     warnings.append("Premium Zone")
 
-            # Volume Profile
             vp = advanced_data.get("volume_profile")
             if vp and vp.get("poc"):
-                dist_poc = vp.get("distance_to_poc", 0)
-                if dist_poc < 2:
+                if vp["distance_to_poc"] < 2:
                     score += 3
                     reasons.append("Near POC")
-                # else no effect
 
-            # VWAP
             vwap_data = advanced_data.get("vwap")
             if vwap_data and vwap_data.get("vwap"):
                 if vwap_data["position"] == "above":
@@ -199,7 +185,6 @@ class ScoringEngine:
                     score -= 4
                     warnings.append("Price Below VWAP")
 
-            # Open Interest
             oi = advanced_data.get("open_interest")
             if oi and oi.get("state") not in ("unavailable", "unknown"):
                 if oi["state"] == "Long Build Up":
@@ -215,7 +200,6 @@ class ScoringEngine:
                     score -= 3
                     warnings.append("OI Long Unwinding")
 
-            # Funding Rate
             fr = advanced_data.get("funding_rate")
             if fr and fr.get("bias") != "unavailable":
                 if fr["bias"] == "Bullish (Costly Longs)":
@@ -225,7 +209,6 @@ class ScoringEngine:
                     score -= 3
                     warnings.append("Funding Bearish Bias")
 
-            # ATR Volatility
             atr_vol = advanced_data.get("atr_volatility")
             if atr_vol:
                 if atr_vol["volatility"] == "High Volatility":
@@ -235,14 +218,12 @@ class ScoringEngine:
                     score += 3
                     reasons.append("Low Volatility Contraction")
 
-            # EMA Slope
             ema_slopes = advanced_data.get("ema_slope")
             if ema_slopes:
                 if all(ema_slopes.get(f"EMA{p}_slope_pct", 0) > 0.1 for p in [20,50]):
                     score += 4
                     reasons.append("EMA Slopes Positive")
 
-            # Divergences
             rsi_div = advanced_data.get("rsi_divergence")
             if rsi_div:
                 if rsi_div.get("bullish_divergence"):
@@ -261,7 +242,6 @@ class ScoringEngine:
                     score -= 6
                     warnings.append("MACD Bearish Divergence")
 
-            # Candlestick Patterns
             cp = advanced_data.get("candlestick_patterns")
             if cp:
                 if cp.get("engulfing_bullish") or cp.get("morning_star"):
@@ -271,7 +251,6 @@ class ScoringEngine:
                     score -= 4
                     warnings.append("Bearish Candlestick")
 
-            # SR Strength
             sr = advanced_data.get("sr_strength")
             if sr:
                 if sr.get("valid_support"):
@@ -281,7 +260,6 @@ class ScoringEngine:
                     score -= 2
                     warnings.append("Strong Resistance")
 
-            # Breakout Quality
             bq = advanced_data.get("breakout_quality")
             if bq:
                 if bq["quality"] == "Real Breakout":
@@ -291,7 +269,6 @@ class ScoringEngine:
                     score -= 5
                     warnings.append("Fake Breakout")
 
-            # Trendline Break
             tl = advanced_data.get("trendline_break")
             if tl and tl.get("trendline_break"):
                 if tl["trendline_break"] == "bullish":
@@ -301,7 +278,6 @@ class ScoringEngine:
                     score -= 5
                     warnings.append("Bearish Trendline Break")
 
-            # Fibonacci
             fib = advanced_data.get("fibonacci")
             if fib and fib.get("golden_zone"):
                 low, high = fib["golden_zone"]
@@ -309,13 +285,11 @@ class ScoringEngine:
                     score += 3
                     reasons.append("Price in Golden Zone")
 
-            # Session Detection (weight 2)
             session = advanced_data.get("session")
             if session and session["session"] in ("London", "New York"):
                 score += 2
                 reasons.append(f"{session['session']} Session")
 
-            # Market Regime
             regime = advanced_data.get("market_regime")
             if regime:
                 if "Trending" in regime["regime"]:
@@ -325,7 +299,6 @@ class ScoringEngine:
                     score -= 3
                     warnings.append("Ranging/Choppy")
 
-            # Correlation Filter
             corr = advanced_data.get("correlation")
             if corr and corr["btc_correlation"] is not None:
                 if corr["btc_correlation"] > 0.7:
@@ -340,18 +313,16 @@ class ScoringEngine:
             score *= 0.8
         elif strength == "Medium":
             score *= 0.9
-        # Very Strong, Strong unchanged
 
         score = max(0, min(100, score))
 
-        # ==================== محاسبه Confidence ====================
+        # ==================== محاسبه Confidence (ملایم‌تر) ====================
         conf = 0
-        # Trend alignment
         if struct_trend == "bullish":
             conf += 15
         elif struct_trend == "bearish":
             conf -= 15
-        # Strength
+
         if strength == "Very Strong":
             conf += 20
         elif strength == "Strong":
@@ -360,34 +331,40 @@ class ScoringEngine:
             conf += 5
         else:
             conf -= 10
-        # MTF
+
         if "Bullish" in mtf_signal:
             conf += 15
         elif "Bearish" in mtf_signal:
             conf -= 10
-        # Volume (Z-score)
+
         if vol_z > 0.5:
             conf += 10
         elif vol_z < -0.5:
-            conf -= 5
-        # Breakout
+            conf -= 5          # قبلاً -10
+
         if breakout:
             conf += 15
-        # Regime
+
         if regime:
             if "Trending" in regime["regime"]:
                 conf += 10
             elif "Ranging" in regime["regime"]:
                 conf -= 5
-        # Divergence (add confidence if present)
+
         if rsi_div and rsi_div.get("bullish_divergence"):
             conf += 5
         if macd_div and macd_div.get("bullish_div"):
             conf += 5
 
+        # جریمه‌های ملایم‌تر
+        if opposing_choch:
+            conf -= 5          # قبلاً -10
+        if atr_vol and atr_vol["volatility"] == "High Volatility":
+            conf -= 5          # قبلاً -10
+
         conf = max(10, min(100, conf))
 
-        # حذف دلایل تکراری (حفظ ترتیب)
+        # حذف دلایل تکراری
         reasons = list(dict.fromkeys(reasons))
         warnings = list(dict.fromkeys(warnings))
 
