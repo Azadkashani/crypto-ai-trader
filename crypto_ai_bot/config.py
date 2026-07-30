@@ -7,9 +7,9 @@ Configuration File (Futures)
 # Exchange Settings
 # ==========================
 EXCHANGE_NAME = "gate"
-API_KEY = "09957d698852c4d065766202d8b2d450"
-API_SECRET = "d01b97f13c935a53fc51c99b04231a0785e0c17594137ec39445ca775551c7cc"
-TESTNET = True
+API_KEY = ""
+API_SECRET = ""
+TESTNET = False
 
 # ==========================
 # Trading Settings
@@ -25,7 +25,7 @@ USE_ALL_MARKETS = True
 MAX_SYMBOLS = 50
 TOP_RESULTS = 5
 
-TIMEFRAME = "1h"                # تایم‌فریم اصلی اسکنر
+TIMEFRAME = "1h"
 LIMIT = 200
 
 # ==========================
@@ -46,7 +46,7 @@ WATCH_SCORE = 50
 # ==========================
 # Risk Management (Futures)
 # ==========================
-RISK_PER_TRADE = 0.01           # 1% ریسک در هر معامله
+RISK_PER_TRADE = 0.01
 MIN_RISK_REWARD = 2.0
 LEVERAGE = 5
 MAX_OPEN_TRADES = 1
@@ -55,12 +55,11 @@ MAX_OPEN_TRADES = 1
 # Trading Execution Settings
 # ==========================
 TRAILING_STOP_ENABLED = True
-TRAILING_STOP_ACTIVATION = 0.5  # وقتی ۵۰٪ حد سود طی شد، حد ضرر به نقطه ورود منتقل شود
-SCAN_INTERVAL_MINUTES = 5       # اسکن بازار هر ۵ دقیقه
+TRAILING_STOP_ACTIVATION = 0.5
+SCAN_INTERVAL_MINUTES = 5
 
 # ==========================
 # Advanced Analytics Flags
-# (True = فعال, False = غیرفعال)
 # ==========================
 ENABLE_LIQUIDITY_SWEEP = True
 ENABLE_FVG = True
@@ -87,7 +86,7 @@ ENABLE_CORRELATION_FILTER = True
 # News & Sentiment Settings
 # ==========================
 ENABLE_NEWS_ENGINE = True
-ENABLE_ECONOMIC_CALENDAR = False      # در صورت نیاز API واقعی جایگزین شود
+ENABLE_ECONOMIC_CALENDAR = False
 ENABLE_SENTIMENT_ENGINE = True
 
 NEWS_SOURCES = [
