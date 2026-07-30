@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Backtester Engine – Multi-exchange support (KuCoin, Binance, Gate, yfinance)
+Backtester Engine – Multi-source support (KuCoin, Binance, yfinance)
 """
 
 import pandas as pd
@@ -46,19 +46,18 @@ class Backtester:
         self.output_dir = output_dir
         self.exchange_name = exchange_name
 
-        # راه‌اندازی صرافی
-        if exchange_name == 'kucoin':
-            self.exchange = ccxt.kucoinfutures({
-                'enableRateLimit': True,
-                'options': {'defaultType': 'future'}
-            })
-        elif exchange_name == 'gate':
-            self.exchange = ccxt.gate({'enableRateLimit': True})
-        else:  # binance یا سایر
-            self.exchange = ccxt.binance({
-                'enableRateLimit': True,
-                'options': {'defaultType': 'future'}
-            })
+        # راه‌اندازی صرافی (در صورت نیاز برای API)
+        self.exchange = None
+        if exchange_name in ('binance', 'gate', 'kucoin'):
+            if exchange_name == 'kucoin':
+                self.exchange = ccxt.kucoinfutures({'enableRateLimit': True})
+            elif exchange_name == 'gate':
+                self.exchange = ccxt.gate({'enableRateLimit': True})
+            else:
+                self.exchange = ccxt.binance({
+                    'enableRateLimit': True,
+                    'options': {'defaultType': 'future'}
+                })
 
         self.portfolio = Portfolio(initial_capital, risk_per_trade, leverage, fee, slippage, spread)
         self.trade_engine = TradeEngine(self.portfolio, trailing_stop, trailing_activation, max_hold_bars)
@@ -71,45 +70,62 @@ class Backtester:
 
     def load_data(self):
         since = int(self.start_date.timestamp() * 1000)
+
         for sym in self.symbols:
+            # 1) تلاش با API صرافی
+            if self.exchange is not None:
+                try:
+                    ohlcv = self.exchange.fetch_ohlcv(
+                        sym,
+                        timeframe=self.timeframe,
+                        since=since,
+                        limit=1000
+                    )
+                    df = pd.DataFrame(
+                        ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume']
+                    )
+                    df['time'] = pd.to_datetime(df['time'], unit='ms')
+                    df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
+                    if not df.empty:
+                        df = df.reset_index(drop=True)
+                        self.data[sym] = df
+                        self.indicators[sym] = IndicatorEngine.calculate(df.copy())
+                        print(f"Loaded {len(df)} candles for {sym} from API")
+                        continue
+                except Exception as e:
+                    print(f"API failed for {sym}: {e}")
+
+            # 2) Fallback: yfinance (نیاز به pip install yfinance)
             try:
-                ohlcv = self.exchange.fetch_ohlcv(
-                    sym,
-                    timeframe=self.timeframe,
-                    since=since,
-                    limit=1000
+                import yfinance as yf
+                ticker = sym.replace("/", "-")  # BTC/USDT -> BTC-USDT
+                yf_ticker = yf.Ticker(ticker)
+                df = yf_ticker.history(
+                    start=self.start_date.strftime('%Y-%m-%d'),
+                    end=(self.end_date + timedelta(days=1)).strftime('%Y-%m-%d'),
+                    interval=self.timeframe
                 )
-                df = pd.DataFrame(
-                    ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume']
-                )
-                df['time'] = pd.to_datetime(df['time'], unit='ms')
+                if df.empty:
+                    raise ValueError("yfinance returned empty DataFrame")
+                # تنظیم ستون‌ها
+                df.reset_index(inplace=True)
+                df.rename(columns={
+                    'Date': 'time', 'Datetime': 'time',
+                    'Open': 'open', 'High': 'high',
+                    'Low': 'low', 'Close': 'close',
+                    'Volume': 'volume'
+                }, inplace=True)
+                df['time'] = pd.to_datetime(df['time'])
+                df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
                 df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
                 if df.empty:
-                    print(f"No data in range for {sym}")
-                    continue
+                    raise ValueError("No data after filtering")
                 df = df.reset_index(drop=True)
                 self.data[sym] = df
                 self.indicators[sym] = IndicatorEngine.calculate(df.copy())
-                print(f"Loaded {len(df)} candles for {sym}")
+                print(f"Loaded {len(df)} candles for {sym} from yfinance")
             except Exception as e:
-                print(f"Could not load {sym}: {e}")
-                # fallback: تلاش برای خواندن فایل CSV محلی
-                filename = sym.replace("/", "_") + f"_{self.timeframe}.csv"
-                try:
-                    df = pd.read_csv(filename)
-                    if 'timestamp' in df.columns:
-                        df.rename(columns={'timestamp': 'time'}, inplace=True)
-                    df['time'] = pd.to_datetime(df['time'])
-                    df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
-                    df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
-                    if df.empty:
-                        continue
-                    df = df.reset_index(drop=True)
-                    self.data[sym] = df
-                    self.indicators[sym] = IndicatorEngine.calculate(df.copy())
-                    print(f"Loaded {len(df)} candles for {sym} from CSV")
-                except Exception as e2:
-                    print(f"CSV fallback also failed for {sym}: {e2}")
+                print(f"yfinance also failed for {sym}: {e}")
 
     def compute_analysis(self, sym):
         if sym not in self.indicators:
