@@ -25,7 +25,7 @@ USE_ALL_MARKETS = True
 MAX_SYMBOLS = 50
 TOP_RESULTS = 5
 
-TIMEFRAME = "1h"                # تایم‌فریم اصلی اسکنر
+TIMEFRAME = "1h"
 LIMIT = 200
 
 # ==========================
@@ -53,7 +53,6 @@ MAX_OPEN_TRADES = 1
 
 # ==========================
 # Advanced Analytics Flags
-# (True = فعال, False = غیرفعال)
 # ==========================
 ENABLE_LIQUIDITY_SWEEP = True
 ENABLE_FVG = True
@@ -75,3 +74,29 @@ ENABLE_FIBONACCI = True
 ENABLE_SESSION_DETECTION = True
 ENABLE_MARKET_REGIME = True
 ENABLE_CORRELATION_FILTER = True
+
+# ==========================
+# News & Sentiment Settings
+# ==========================
+ENABLE_NEWS_ENGINE = True
+ENABLE_ECONOMIC_CALENDAR = False      # در صورت نیاز API واقعی جایگزین شود
+ENABLE_SENTIMENT_ENGINE = True
+
+NEWS_SOURCES = [
+    {"name": "CoinDesk", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "type": "rss"},
+    {"name": "Cointelegraph", "url": "https://cointelegraph.com/rss", "type": "rss"},
+]
+NEWS_MAX_AGE_HOURS = 2
+
+ALTERNATIVE_ME_API_URL = "https://api.alternative.me/fng/"
+FEAR_GREED_ENABLED = True
+
+NEWS_WEIGHT_IN_SCORE = 0.15
+SENTIMENT_WEIGHT_IN_SCORE = 0.10
+NEWS_WEIGHT_IN_CONFIDENCE = 0.10
+SENTIMENT_WEIGHT_IN_CONFIDENCE = 0.05
+
+HIGH_IMPACT_WINDOW_MINUTES = 30
+
+ECONOMIC_CALENDAR_API_URL = "https://example.com/calendar"
+ECONOMIC_CALENDAR_ENABLED = False
