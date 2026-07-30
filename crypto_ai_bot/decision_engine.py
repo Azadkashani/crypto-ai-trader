@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Professional Decision Engine
+Professional Decision Engine (with News Risk)
 """
 
 from weights import WARNING_WEIGHTS, CONFIDENCE_FACTORS, REASON_WEIGHTS
@@ -8,12 +8,8 @@ from weights import WARNING_WEIGHTS, CONFIDENCE_FACTORS, REASON_WEIGHTS
 
 class DecisionEngine:
     @staticmethod
-    def evaluate(df, market_structure, mtf_signal, strength, advanced_data, score, breakout, reasons, warnings):
-        """
-        ورودی‌ها: داده‌های تحلیلی
-        خروجی: دیکشنری شامل تصمیم نهایی، Confidence، Trade Readiness، Entry Quality،
-                Risk Level، توضیح تصمیم، وضعیت فعلی و لیست موانع
-        """
+    def evaluate(df, market_structure, mtf_signal, strength, advanced_data, score, breakout,
+                 reasons, warnings, risk_event=False):
         last = df.iloc[-1]
         trend = market_structure.get("trend", "sideways")
         bos = market_structure.get("bos", [])
@@ -26,15 +22,13 @@ class DecisionEngine:
                 opposing_choch = True
 
         # -------------------------------
-        # 1. محاسبه Confidence مستقل
+        # محاسبه Confidence (همانند قبل)
         # -------------------------------
         conf = 0
-        # trend
         if trend == "bullish":
             conf += CONFIDENCE_FACTORS["trend_bullish"]
         elif trend == "bearish":
             conf += CONFIDENCE_FACTORS["trend_bearish"]
-        # strength
         if strength == "Very Strong":
             conf += CONFIDENCE_FACTORS["strength_very_strong"]
         elif strength == "Strong":
@@ -43,7 +37,6 @@ class DecisionEngine:
             conf += CONFIDENCE_FACTORS["strength_medium"]
         else:
             conf += CONFIDENCE_FACTORS["strength_weak"]
-        # MTF
         if "Bullish" in mtf_signal:
             if "Strong" in mtf_signal:
                 conf += CONFIDENCE_FACTORS["mtf_bullish_strong"]
@@ -54,13 +47,10 @@ class DecisionEngine:
                 conf += CONFIDENCE_FACTORS["mtf_bearish_strong"]
             else:
                 conf += CONFIDENCE_FACTORS["mtf_bearish"]
-        # BOS
         if last_bos:
             conf += CONFIDENCE_FACTORS["bos_present"]
-        # EMA alignment
         if last["EMA20"] > last["EMA50"] and last["EMA50"] > last["EMA200"]:
             conf += CONFIDENCE_FACTORS["ema_aligned"]
-        # Volume
         avg_vol = df["volume"].tail(20).mean()
         std_vol = df["volume"].tail(20).std()
         vol_z = (last["volume"] - avg_vol) / std_vol if std_vol > 0 else 0
@@ -68,17 +58,14 @@ class DecisionEngine:
             conf += CONFIDENCE_FACTORS["volume_high"]
         elif vol_z < -0.5:
             conf += CONFIDENCE_FACTORS["volume_low"]
-        # Breakout
         if breakout:
             conf += CONFIDENCE_FACTORS["breakout_real"]
-        # Regime
         regime = advanced_data.get("market_regime") if advanced_data else None
         if regime:
             if "Trending" in regime.get("regime", ""):
                 conf += CONFIDENCE_FACTORS["regime_trending"]
             elif "Ranging" in regime.get("regime", ""):
                 conf += CONFIDENCE_FACTORS["regime_ranging"]
-        # Divergences
         rsi_div = advanced_data.get("rsi_divergence") if advanced_data else None
         macd_div = advanced_data.get("macd_divergence") if advanced_data else None
         if rsi_div and rsi_div.get("bullish_divergence"):
@@ -89,29 +76,24 @@ class DecisionEngine:
             conf += CONFIDENCE_FACTORS["divergence_bearish"]
         if macd_div and macd_div.get("bearish_div"):
             conf += CONFIDENCE_FACTORS["divergence_bearish"]
-        # Opposing CHoCH
         if opposing_choch:
             conf += CONFIDENCE_FACTORS["opposing_choch"]
-        # High Volatility
         atr_vol = advanced_data.get("atr_volatility") if advanced_data else None
         if atr_vol and atr_vol.get("volatility") == "High Volatility":
             conf += CONFIDENCE_FACTORS["high_volatility"]
-        # OI
         oi = advanced_data.get("open_interest") if advanced_data else None
         if oi and oi.get("state") == "Long Unwinding":
             conf += CONFIDENCE_FACTORS["oi_long_unwinding"]
-
         conf = max(10, min(100, conf))
 
         # -------------------------------
-        # 2. محاسبه Trade Readiness (مستقل از Action)
+        # Trade Readiness (مستقل)
         # -------------------------------
         base_readiness = 50
         if trend == "bullish":
             base_readiness += 25
         elif trend == "bearish":
             base_readiness -= 25
-        # strength
         if strength == "Very Strong":
             base_readiness += 20
         elif strength == "Strong":
@@ -120,18 +102,14 @@ class DecisionEngine:
             base_readiness += 5
         else:
             base_readiness -= 10
-        # MTF
         if "Bullish" in mtf_signal:
             base_readiness += 20
         elif "Bearish" in mtf_signal:
             base_readiness -= 15
-        # breakout
         if breakout:
             base_readiness += 15
-        # volume
         if vol_z > 0.5:
             base_readiness += 10
-        # warning penalty based on severity
         critical_penalty = 0
         major_penalty = 0
         minor_penalty = 0
@@ -147,16 +125,19 @@ class DecisionEngine:
         readiness = max(0, min(100, int(base_readiness)))
 
         # -------------------------------
-        # 3. تصمیم‌گیری نهایی (Action)
+        # تصمیم‌گیری نهایی (با در نظر گرفتن ریسک رویداد)
         # -------------------------------
-        # اولویت: critical warnings ممکن است مستقیماً مانع ورود شوند
         has_critical = any(
             WARNING_WEIGHTS.get(w, (0, ""))[1] == "critical" for w in warnings
         )
-        if trend == "bearish":
+
+        if risk_event:
+            action = "WAIT NEWS"
+            readiness = max(0, readiness - 20)
+            conf = max(10, conf - 15)
+        elif trend == "bearish":
             action = "NO TRADE"
         elif has_critical and readiness < 80:
-            # اگر هشدار بحرانی وجود دارد و readiness زیر 80 باشد، ورود ممنوع
             action = "NO TRADE"
         elif readiness >= 95:
             action = "BUY"
@@ -168,7 +149,7 @@ class DecisionEngine:
             action = "NO TRADE"
 
         # -------------------------------
-        # 4. Entry Quality (همان منطق قبلی بهبود یافته)
+        # Entry Quality
         # -------------------------------
         support_50 = df["low"].tail(50).min()
         resistance_50 = df["high"].tail(50).max()
@@ -185,7 +166,7 @@ class DecisionEngine:
             eq_score += 2
         elif dist_sup > 1:
             eq_score += 1
-        rr = 2.0  # RR ثابت ۲
+        rr = 2.0
         if rr >= 2:
             eq_score += 2
         elif rr >= 1.5:
@@ -198,7 +179,6 @@ class DecisionEngine:
             eq_score += 1
         if breakout:
             eq_score += 3
-        # advanced factors
         if advanced_data:
             if advanced_data.get("liquidity_sweep", {}).get("buy_side_sweep"):
                 eq_score += 2
@@ -218,19 +198,19 @@ class DecisionEngine:
                 break
 
         # -------------------------------
-        # 5. توضیح تصمیم و وضعیت
+        # توضیح تصمیم و وضعیت
         # -------------------------------
-        # وضعیت فعلی
         if action in ("BUY", "STRONG BUY"):
             status = "Ready for Entry"
         elif action == "WATCH":
             status = "Waiting for Confirmation"
         elif action == "WAIT":
             status = "Avoid Entry – Wait for Better Conditions"
+        elif action == "WAIT NEWS":
+            status = "High-impact news approaching – Pause"
         else:
             status = "No Trade – Bearish or Critical Issues"
 
-        # موانع (چه چیزی کم است؟)
         missing = []
         if trend != "bullish":
             missing.append("Bullish Trend")
@@ -242,13 +222,13 @@ class DecisionEngine:
             missing.append("Higher Volume")
         if resistance_50 - last["close"] < 0.02 * last["close"]:
             missing.append("Clear Break of Resistance")
-        # واگرایی نزولی
         if (rsi_div and rsi_div.get("bearish_divergence")) or (macd_div and macd_div.get("bearish_div")):
             missing.append("Clear Divergence Signal")
         if opposing_choch:
             missing.append("CHoCH Resolution")
+        if risk_event:
+            missing.append("Wait for economic news to pass")
 
-        # دلیل تصمیم
         decision_reason = ""
         if action == "BUY":
             decision_reason = "Strong bullish alignment, high readiness and confidence."
@@ -256,10 +236,11 @@ class DecisionEngine:
             decision_reason = "Bullish structure present but awaiting volume/breakout confirmation."
         elif action == "WAIT":
             decision_reason = "Multiple warnings reduce readiness; safer to wait."
+        elif action == "WAIT NEWS":
+            decision_reason = "High impact news event imminent – trading paused."
         else:
             decision_reason = "Bearish trend or critical structure conflict."
 
-        # Risk Level
         risk_level = "Medium"
         if atr_vol and atr_vol.get("volatility") == "High Volatility":
             risk_level = "High"
