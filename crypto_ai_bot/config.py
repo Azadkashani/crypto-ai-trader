@@ -25,7 +25,7 @@ USE_ALL_MARKETS = True
 MAX_SYMBOLS = 50
 TOP_RESULTS = 5
 
-TIMEFRAME = "1h"
+TIMEFRAME = "1h"                # تایم‌فریم اصلی اسکنر
 LIMIT = 200
 
 # ==========================
@@ -46,13 +46,21 @@ WATCH_SCORE = 50
 # ==========================
 # Risk Management (Futures)
 # ==========================
-RISK_PER_TRADE = 0.01
+RISK_PER_TRADE = 0.01           # 1% ریسک در هر معامله
 MIN_RISK_REWARD = 2.0
 LEVERAGE = 5
 MAX_OPEN_TRADES = 1
 
 # ==========================
+# Trading Execution Settings
+# ==========================
+TRAILING_STOP_ENABLED = True
+TRAILING_STOP_ACTIVATION = 0.5  # وقتی ۵۰٪ حد سود طی شد، حد ضرر به نقطه ورود منتقل شود
+SCAN_INTERVAL_MINUTES = 5       # اسکن بازار هر ۵ دقیقه
+
+# ==========================
 # Advanced Analytics Flags
+# (True = فعال, False = غیرفعال)
 # ==========================
 ENABLE_LIQUIDITY_SWEEP = True
 ENABLE_FVG = True
