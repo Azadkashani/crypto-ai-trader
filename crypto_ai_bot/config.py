@@ -25,7 +25,7 @@ USE_ALL_MARKETS = True
 MAX_SYMBOLS = 50
 TOP_RESULTS = 5
 
-TIMEFRAME = "1h"
+TIMEFRAME = "1h"                # تایم‌فریم اصلی اسکنر
 LIMIT = 200
 
 # ==========================
@@ -53,7 +53,7 @@ MAX_OPEN_TRADES = 1
 
 # ==========================
 # Advanced Analytics Flags
-# (همه فعال شدند)
+# (True = فعال, False = غیرفعال)
 # ==========================
 ENABLE_LIQUIDITY_SWEEP = True
 ENABLE_FVG = True
