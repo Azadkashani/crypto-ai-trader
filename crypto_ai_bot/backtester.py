@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Backtester Engine – Core backtesting loop with Binance fallback
+Backtester Engine – Multi-exchange support (KuCoin, Binance, Gate, yfinance)
 """
 
 import pandas as pd
@@ -46,10 +46,15 @@ class Backtester:
         self.output_dir = output_dir
         self.exchange_name = exchange_name
 
-        # راه‌اندازی صرافی برای بک‌تست
-        if exchange_name == 'gate':
+        # راه‌اندازی صرافی
+        if exchange_name == 'kucoin':
+            self.exchange = ccxt.kucoinfutures({
+                'enableRateLimit': True,
+                'options': {'defaultType': 'future'}
+            })
+        elif exchange_name == 'gate':
             self.exchange = ccxt.gate({'enableRateLimit': True})
-        else:
+        else:  # binance یا سایر
             self.exchange = ccxt.binance({
                 'enableRateLimit': True,
                 'options': {'defaultType': 'future'}
@@ -66,16 +71,13 @@ class Backtester:
 
     def load_data(self):
         since = int(self.start_date.timestamp() * 1000)
-        until = int(self.end_date.timestamp() * 1000)
-
         for sym in self.symbols:
             try:
-                # دریافت داده از صرافی انتخابی
                 ohlcv = self.exchange.fetch_ohlcv(
                     sym,
                     timeframe=self.timeframe,
                     since=since,
-                    limit=1000  # حداکثر ۱۰۰۰ کندل
+                    limit=1000
                 )
                 df = pd.DataFrame(
                     ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume']
@@ -91,6 +93,23 @@ class Backtester:
                 print(f"Loaded {len(df)} candles for {sym}")
             except Exception as e:
                 print(f"Could not load {sym}: {e}")
+                # fallback: تلاش برای خواندن فایل CSV محلی
+                filename = sym.replace("/", "_") + f"_{self.timeframe}.csv"
+                try:
+                    df = pd.read_csv(filename)
+                    if 'timestamp' in df.columns:
+                        df.rename(columns={'timestamp': 'time'}, inplace=True)
+                    df['time'] = pd.to_datetime(df['time'])
+                    df = df[['time', 'open', 'high', 'low', 'close', 'volume']]
+                    df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
+                    if df.empty:
+                        continue
+                    df = df.reset_index(drop=True)
+                    self.data[sym] = df
+                    self.indicators[sym] = IndicatorEngine.calculate(df.copy())
+                    print(f"Loaded {len(df)} candles for {sym} from CSV")
+                except Exception as e2:
+                    print(f"CSV fallback also failed for {sym}: {e2}")
 
     def compute_analysis(self, sym):
         if sym not in self.indicators:
