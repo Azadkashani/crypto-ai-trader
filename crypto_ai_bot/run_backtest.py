@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Backtest Runner – Entry point for backtesting
+Backtest Runner – Entry point for backtesting (with exchange selection)
 """
 
 import argparse
@@ -8,7 +8,6 @@ from backtester import Backtester
 from config import (
     SYMBOLS,
     TIMEFRAME,
-    LIMIT,
     RISK_PER_TRADE,
     LEVERAGE,
     TRAILING_STOP_ENABLED,
@@ -29,6 +28,8 @@ def main():
                         help='Initial capital in USDT')
     parser.add_argument('--timeframe', type=str, default=TIMEFRAME,
                         help='Timeframe (e.g., 1h, 4h)')
+    parser.add_argument('--exchange', type=str, default='binance',
+                        help='Exchange to fetch data from (binance, gate)')
     parser.add_argument('--risk-per-trade', type=float, default=RISK_PER_TRADE,
                         help='Risk per trade (0.01 = 1%)')
     parser.add_argument('--leverage', type=int, default=LEVERAGE,
@@ -68,6 +69,7 @@ def main():
         spread=args.spread,
         max_hold_bars=args.max_hold_bars,
         output_dir=args.output_dir,
+        exchange_name=args.exchange,
     )
     bt.run()
 
