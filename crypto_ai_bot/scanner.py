@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Market Scanner + Multi Timeframe Engine (Decision Engine)
+Market Scanner + Multi Timeframe Engine (Decision Engine + News/Sentiment)
 """
 
 from market_structure import MarketStructure
@@ -29,6 +29,9 @@ from config import (
     ENABLE_SESSION_DETECTION,
     ENABLE_MARKET_REGIME,
     ENABLE_CORRELATION_FILTER,
+    ENABLE_NEWS_ENGINE,
+    ENABLE_SENTIMENT_ENGINE,
+    ENABLE_ECONOMIC_CALENDAR,
 )
 
 from data import MarketData
@@ -39,6 +42,15 @@ from scoring import ScoringEngine
 from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
 from decision_engine import DecisionEngine
+
+# News & Sentiment imports
+from news_engine import NewsEngine
+from news_analyzer import NewsAnalyzer
+from news_mapping import NewsMapping
+from market_sentiment import MarketSentiment
+from economic_calendar import EconomicCalendar
+from risk_events import RiskEvents
+from news_scoring import NewsScoring
 
 
 class MarketScanner:
@@ -75,6 +87,15 @@ class MarketScanner:
         symbols = self.get_symbols()
         print(f"Scanning {len(symbols)} symbols...\n")
 
+        # دریافت اخبار و احساسات یک بار برای همه نمادها (اختیاری)
+        all_raw_news = []
+        if ENABLE_NEWS_ENGINE:
+            all_raw_news = NewsEngine.fetch_news()
+        sentiment_data = None
+        if ENABLE_SENTIMENT_ENGINE:
+            sentiment_data = MarketSentiment.fetch_sentiment(self.data.exchange)
+        calendar_events = EconomicCalendar.fetch_events() if ENABLE_ECONOMIC_CALENDAR else []
+
         for symbol in symbols:
             try:
                 df = self.data.get_ohlcv(symbol)
@@ -102,12 +123,36 @@ class MarketScanner:
                     aa = AdvancedAnalytics(data_engine=self.data)
                     advanced_data = aa.analyze(df, market_structure=market_structure, symbol=symbol)
 
+                # ==============================
+                # News & Sentiment Scoring
+                # ==============================
+                news_score_val = 0
+                sentiment_score_val = 0
+                risk_event = False
+                if ENABLE_NEWS_ENGINE or ENABLE_SENTIMENT_ENGINE:
+                    # تحلیل اخبار خام
+                    analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
+                    # فیلتر اخبار مرتبط با نماد
+                    related_news = []
+                    for news in analyzed_news:
+                        syms = NewsMapping.get_related_symbols(news["title"])
+                        if "MARKET" in syms or symbol.split("/")[0] in syms:
+                            related_news.append(news)
+                    scores = NewsScoring.calculate(related_news, sentiment_data)
+                    news_score_val = scores["news_score"]
+                    sentiment_score_val = scores["sentiment_score"]
+
+                    # بررسی ریسک رویدادهای مهم
+                    risk_event = RiskEvents.is_high_impact_near(related_news, calendar_events)
+
                 analysis = ScoringEngine.calculate(
                     df,
                     mtf_signal,
                     market_structure=market_structure,
                     strength=strength,
-                    advanced_data=advanced_data
+                    advanced_data=advanced_data,
+                    news_score=news_score_val,
+                    sentiment_score=sentiment_score_val
                 )
 
                 base_score = analysis["base_score"]
@@ -124,7 +169,8 @@ class MarketScanner:
                 # ==============================
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
-                    advanced_data, score, breakout, reasons, warnings
+                    advanced_data, score, breakout, reasons, warnings,
+                    risk_event=risk_event
                 )
 
                 action = decision["action"]
@@ -167,6 +213,8 @@ class MarketScanner:
                     "Summary": summary,
                     "Entry Quality": entry_quality,
                     "Trade Readiness": trade_readiness,
+                    "News Score": news_score_val,
+                    "Sentiment Score": sentiment_score_val,
                     "advanced": advanced_data
                 })
 
