@@ -399,7 +399,7 @@ class ScoringEngine:
         reasons = list(dict.fromkeys(reasons))
         warnings = list(dict.fromkeys(warnings))
 
-        # افزودن وزن‌ها به Reasons و Warnings
+        # افزودن وزن‌ها به Reasons و Warnings (اصلاح‌شده برای ساختار جدید weights)
         weighted_reasons = []
         for r in reasons:
             weight = REASON_WEIGHTS.get(r, 1)
@@ -408,7 +408,9 @@ class ScoringEngine:
 
         weighted_warnings = []
         for w in warnings:
-            weight = WARNING_WEIGHTS.get(w, 1)
+            # استخراج وزن عددی از tuple (weight, severity)
+            weight_tuple = WARNING_WEIGHTS.get(w, (1, "minor"))
+            weight = weight_tuple[0] if isinstance(weight_tuple, tuple) else weight_tuple
             stars = "★" * weight
             weighted_warnings.append(f"{stars} {w}")
 
