@@ -1,9 +1,9 @@
 """
 Crypto AI Bot
-Risk Manager – محاسبه Position Size و Leverage بر اساس ۱٪ ریسک
+Risk Manager – Position Sizing & Dynamic Leverage
 """
 
-from config import RISK_PER_TRADE, LEVERAGE
+from config import RISK_PER_TRADE
 
 
 class RiskManager:
@@ -12,7 +12,7 @@ class RiskManager:
         """
         محاسبه مقدار قرارداد (quantity) با ریسک دقیق ۱٪
         """
-        risk_amount = account_balance * RISK_PER_TRADE   # مثلاً ۱۰۰ USDT
+        risk_amount = account_balance * RISK_PER_TRADE
 
         if side in ("buy", "long"):
             sl_distance = entry - stop_loss
@@ -20,18 +20,14 @@ class RiskManager:
             sl_distance = stop_loss - entry
 
         if sl_distance <= 0:
-            return 0  # حد ضرر نامعتبر
+            return 0
 
-        # تعداد قراردادها = مقدار ریسک تقسیم بر فاصله حد ضرر (بر حسب دلار)
         quantity = risk_amount / sl_distance
-
-        # بررسی حداقل حجم معاملاتی (در Gate.io معمولاً ۱ قرارداد)
-        # می‌توان حداقل را ۱ در نظر گرفت
         quantity = max(1, round(quantity, 4))
         return quantity
 
     @staticmethod
-    def calculate_margin(entry, quantity, leverage=LEVERAGE):
+    def calculate_margin(entry, quantity, leverage):
         """
         مارجین مورد نیاز برای پوزیشن ایزوله
         """
@@ -52,3 +48,26 @@ class RiskManager:
         if risk <= 0:
             return False
         return (reward / risk) >= 2.0
+
+    @staticmethod
+    def suggest_leverage(entry, stop_loss, side, max_leverage=20):
+        """
+        پیشنهاد اهرم پویا بر اساس فاصلهٔ حد ضرر.
+        فرمول: اهرم = 1 / (درصد فاصلهٔ حد ضرر × 1.5)
+        هرچه حد ضرر نزدیک‌تر باشد، اهرم بالاتر می‌رود (تا سقف max_leverage).
+        این کار ریسک ۱٪ را حفظ کرده و مارجین را بهینه می‌کند.
+        """
+        if entry <= 0:
+            return 1
+        if side in ("buy", "long"):
+            sl_distance = entry - stop_loss
+        else:
+            sl_distance = stop_loss - entry
+
+        if sl_distance <= 0:
+            return 1
+
+        sl_percent = sl_distance / entry
+        # ضریب اطمینان 1.5 برای جلوگیری از لیکویید شدن در نوسانات
+        dynamic_lev = int(1 / (sl_percent * 1.5))
+        return min(max_leverage, max(1, dynamic_lev))
