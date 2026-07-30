@@ -1,6 +1,8 @@
 """
-Order Block Detection (SMC Style)
+Order Block Detection (SMC Style) - No Warnings
 """
+
+import pandas as pd
 
 class OrderBlock:
     @staticmethod
@@ -12,19 +14,31 @@ class OrderBlock:
             return {"bullish_ob": None, "bearish_ob": None, "valid": False, "touches": 0}
         last_bos = bos[-1]
         bos_idx = last_bos["index"]
-        # Order Block معمولاً آخرین کندل مخالف قبل از شکست است
+
         if bos_idx > 0:
             ob_candle = df.iloc[bos_idx - 1]
+            # بخش بعد از BOS
+            subsequent = df.iloc[bos_idx:].copy()
+            
             if last_bos["type"] == "bullish" and ob_candle["close"] < ob_candle["open"]:
-                # کندل نزولی → محدوده OB صعودی (بالای آن)
                 ob_high = ob_candle["high"]
                 ob_low = ob_candle["low"]
-                # بررسی برخوردها
-                touches = len(df.iloc[bos_idx:][df["low"] <= ob_high])  # برخورد به منطقه
-                return {"bullish_ob": {"high": ob_high, "low": ob_low}, "bearish_ob": None, "valid": True, "touches": touches}
+                # استفاده از .values برای جلوگیری از مشکل index
+                touches = int((subsequent["low"].values <= ob_high).sum())
+                return {
+                    "bullish_ob": {"high": ob_high, "low": ob_low},
+                    "bearish_ob": None,
+                    "valid": True,
+                    "touches": touches
+                }
             elif last_bos["type"] == "bearish" and ob_candle["close"] > ob_candle["open"]:
                 ob_high = ob_candle["high"]
                 ob_low = ob_candle["low"]
-                touches = len(df.iloc[bos_idx:][df["high"] >= ob_low])
-                return {"bullish_ob": None, "bearish_ob": {"high": ob_high, "low": ob_low}, "valid": True, "touches": touches}
+                touches = int((subsequent["high"].values >= ob_low).sum())
+                return {
+                    "bullish_ob": None,
+                    "bearish_ob": {"high": ob_high, "low": ob_low},
+                    "valid": True,
+                    "touches": touches
+                }
         return {"bullish_ob": None, "bearish_ob": None, "valid": False, "touches": 0}
