@@ -1,12 +1,11 @@
 """
 Crypto AI Bot
-Backtester Engine – Core backtesting loop with causal market structure
+Backtester Engine – Core backtesting loop with Binance fallback
 """
 
 import pandas as pd
-import numpy as np
+import ccxt
 from datetime import timedelta
-from data import MarketData
 from indicators import IndicatorEngine
 from market_structure import MarketStructure
 from scoring import ScoringEngine
@@ -16,21 +15,9 @@ from portfolio import Portfolio
 from equity_curve import EquityCurve
 from performance import Performance
 from backtest_report import BacktestReport
-from config import (
-    LIMIT,
-    ENABLE_NEWS_ENGINE,
-    ENABLE_SENTIMENT_ENGINE,
-)
 
 
 class CausalMarketStructure:
-    """
-    یک نسخهٔ علّی از MarketStructure که برای بک‌تست طراحی شده است.
-    در هر نقطه فقط از اطلاعات گذشته (تا کندل جاری) استفاده می‌کند
-    و پس از دریافت ۵ کندل آینده، پیوت‌های قبلی را تأیید می‌کند.
-    این کار Lookahead Bias را حذف می‌کند.
-    """
-
     @staticmethod
     def analyze(df):
         return MarketStructure.analyze(df)
@@ -40,7 +27,8 @@ class Backtester:
     def __init__(self, symbols, start_date, end_date, timeframe,
                  initial_capital, risk_per_trade, leverage, max_open_trades,
                  trailing_stop, trailing_activation,
-                 fee, slippage, spread, max_hold_bars, output_dir):
+                 fee, slippage, spread, max_hold_bars, output_dir,
+                 exchange_name='binance'):
         self.symbols = symbols
         self.start_date = pd.Timestamp(start_date)
         self.end_date = pd.Timestamp(end_date)
@@ -56,8 +44,17 @@ class Backtester:
         self.spread = spread
         self.max_hold_bars = max_hold_bars
         self.output_dir = output_dir
+        self.exchange_name = exchange_name
 
-        self.data_engine = MarketData()
+        # راه‌اندازی صرافی برای بک‌تست
+        if exchange_name == 'gate':
+            self.exchange = ccxt.gate({'enableRateLimit': True})
+        else:
+            self.exchange = ccxt.binance({
+                'enableRateLimit': True,
+                'options': {'defaultType': 'future'}
+            })
+
         self.portfolio = Portfolio(initial_capital, risk_per_trade, leverage, fee, slippage, spread)
         self.trade_engine = TradeEngine(self.portfolio, trailing_stop, trailing_activation, max_hold_bars)
         self.equity_curve = EquityCurve()
@@ -68,12 +65,22 @@ class Backtester:
         self.advanced_analytics = {}
 
     def load_data(self):
+        since = int(self.start_date.timestamp() * 1000)
+        until = int(self.end_date.timestamp() * 1000)
+
         for sym in self.symbols:
             try:
-                df = self.data_engine.get_ohlcv(sym, timeframe=self.timeframe)
-                if df.empty:
-                    print(f"No data for {sym}")
-                    continue
+                # دریافت داده از صرافی انتخابی
+                ohlcv = self.exchange.fetch_ohlcv(
+                    sym,
+                    timeframe=self.timeframe,
+                    since=since,
+                    limit=1000  # حداکثر ۱۰۰۰ کندل
+                )
+                df = pd.DataFrame(
+                    ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'volume']
+                )
+                df['time'] = pd.to_datetime(df['time'], unit='ms')
                 df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
                 if df.empty:
                     print(f"No data in range for {sym}")
@@ -81,6 +88,7 @@ class Backtester:
                 df = df.reset_index(drop=True)
                 self.data[sym] = df
                 self.indicators[sym] = IndicatorEngine.calculate(df.copy())
+                print(f"Loaded {len(df)} candles for {sym}")
             except Exception as e:
                 print(f"Could not load {sym}: {e}")
 
@@ -95,7 +103,6 @@ class Backtester:
         print("Loading historical data...")
         self.load_data()
 
-        # حذف نمادهایی که داده ندارند
         self.symbols = [s for s in self.symbols if s in self.data]
         if not self.symbols:
             print("No valid symbols for backtest.")
@@ -105,7 +112,6 @@ class Backtester:
         for sym in self.symbols:
             self.compute_analysis(sym)
 
-        # یکپارچه‌سازی زمانی
         all_times = set()
         for sym in self.data:
             all_times.update(self.data[sym]['time'].tolist())
