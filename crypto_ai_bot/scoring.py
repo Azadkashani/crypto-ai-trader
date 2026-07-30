@@ -1,30 +1,32 @@
 """
 Crypto AI Bot v5.6
-Advanced Scoring Engine (Professional Calibration)
+Advanced Scoring Engine (Integrated)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
 
-
 class ScoringEngine:
 
     @staticmethod
-    def calculate(df, mtf_signal="Neutral", market_structure=None, strength="Medium"):
+    def calculate(df, mtf_signal="Neutral", market_structure=None, strength="Medium", advanced_data=None):
         last = df.iloc[-1]
 
         # ==================== محاسبه Score ====================
         score = 0.0
-        confirmations = []   # برای Confidence (نام, مقدار امتیاز)
+        reasons = []
+        warnings = []
 
-        struct_trend = market_structure.get("trend", "sideways") if market_structure else "sideways"
-        bos = market_structure.get("bos", []) if market_structure else []
-        choch = market_structure.get("choch", []) if market_structure else []
-        swing_highs = market_structure.get("swing_highs", []) if market_structure else []
-        swing_lows = market_structure.get("swing_lows", []) if market_structure else []
-        last_event = market_structure.get("last_event", None) if market_structure else None
+        struct_trend = "sideways"
+        bos = []
+        choch = []
+        last_event = None
+        if market_structure:
+            struct_trend = market_structure.get("trend", "sideways")
+            bos = market_structure.get("bos", [])
+            choch = market_structure.get("choch", [])
+            last_event = market_structure.get("last_event")
 
         last_bos = bos[-1] if bos else None
-        # Opposing CHoCH فقط اگر آخرین رویداد یک CHoCH خلاف روند باشد
         opposing_choch = False
         if last_event and last_event["event"] == "choch":
             if (struct_trend == "bullish" and last_event["type"] == "bearish") or \
@@ -34,99 +36,303 @@ class ScoringEngine:
         # 1. Market Structure
         if struct_trend == "bullish":
             score += 7
+            reasons.append("Market Structure Bullish")
         elif struct_trend == "bearish":
             score -= 7
+            warnings.append("Market Structure Bearish")
 
         if last_bos:
             if last_bos["type"] == "bullish":
                 score += 12
-                confirmations.append(("BOS Bullish Break", 20))
+                reasons.append("BOS Bullish Break")
             else:
                 score -= 12
-
-        # HH/HL pattern
-        if len(swing_highs) >= 2 and len(swing_lows) >= 2:
-            if swing_highs[-2]["label"] == "HH" and swing_lows[-2]["label"] == "HL":
-                if struct_trend == "bullish":
-                    score += 6
-                    confirmations.append(("HH+HL Structure", 10))
+                warnings.append("BOS Bearish Break")
 
         # 2. Multi Timeframe
         mtf_delta = 0
         if mtf_signal == "Strong Bullish":
             mtf_delta = 15
-            confirmations.append(("MTF Strong Bullish", 15))
         elif mtf_signal == "Bullish":
             mtf_delta = 10
-            confirmations.append(("MTF Bullish", 10))
         elif mtf_signal == "Bearish":
             mtf_delta = -10
         elif mtf_signal == "Strong Bearish":
             mtf_delta = -15
         score += mtf_delta
-
-        # Alignment MTF
-        if (struct_trend == "bullish" and "Bullish" in mtf_signal) or \
-           (struct_trend == "bearish" and "Bearish" in mtf_signal):
-            score += 4
-            confirmations.append(("MTF Alignment", 10))
+        if "Bullish" in mtf_signal:
+            reasons.append(f"MTF {mtf_signal}")
+        elif "Bearish" in mtf_signal:
+            warnings.append(f"MTF {mtf_signal}")
 
         # 3. EMA
         ema_score = 0
         if last["EMA20"] > last["EMA50"]:
             ema_score += 8
+            reasons.append("EMA20 > EMA50")
         if last["EMA50"] > last["EMA200"]:
             ema_score += 8
+            reasons.append("EMA50 > EMA200")
         score += ema_score
-        if ema_score == 16:
-            confirmations.append(("EMA Alignment", 8))
 
         # 4. ADX & DI
         if last["ADX"] >= 25:
             score += 8
-            confirmations.append(("Strong ADX", 8))
+            reasons.append("Strong ADX")
         if last["+DI"] > last["-DI"]:
             score += 5
+            reasons.append("+DI > -DI")
         elif last["-DI"] > last["+DI"]:
             score -= 5
+            warnings.append("Bearish DI")
 
         # 5. RSI
         rsi = last["RSI"]
         if 45 <= rsi <= 65:
             score += 8
-            confirmations.append(("Healthy RSI", 5))
+            reasons.append("Healthy RSI")
         elif 65 < rsi <= 75 and last["ADX"] >= 25:
             score += 6
+            reasons.append("Strong Momentum RSI")
 
         # 6. MACD
         if last["MACD"] > last["MACD_SIGNAL"]:
             score += 8
-            confirmations.append(("Bullish MACD", 5))
+            reasons.append("Bullish MACD")
 
-        # 7. Volume
-        if last["volume"] > last["AVG_VOLUME"]:
+        # 7. Volume (improved: Z-Score)
+        avg_vol = df["volume"].tail(20).mean()
+        std_vol = df["volume"].tail(20).std()
+        if std_vol > 0:
+            vol_z = (last["volume"] - avg_vol) / std_vol
+        else:
+            vol_z = 0
+        if vol_z > 0.5:
             score += 8
-            confirmations.append(("High Volume", 10))
+            reasons.append("High Volume")
+        elif vol_z < -0.5:
+            warnings.append("Low Volume")
+            # no score penalty, just warning
+        else:
+            # neutral
+            pass
 
         # 8. Volume Breakout
         resistance_20 = df["high"].tail(20).max()
-        if last["close"] > resistance_20 and last["volume"] > 1.2 * last["AVG_VOLUME"]:
+        breakout = last["close"] > resistance_20 and last["volume"] > 1.2 * avg_vol
+        if breakout:
             score += 8
-            confirmations.append(("Volume Breakout", 5))
+            reasons.append("Volume Breakout")
 
-        # 9. Location Penalty (فقط زیر ۲٪)
+        # 9. Resistance Proximity Penalty (conditional)
         distance_pct = (resistance_20 - last["close"]) / last["close"] * 100 if last["close"] > 0 else 100
-        location_penalty = 0
-        if distance_pct < 2.0:
-            location_penalty = 5
-            score -= location_penalty
+        # اگر BOS صعودی و شکست مقاومت موجود نباشد، جریمه کن
+        if not breakout and not (last_bos and last_bos["type"] == "bullish"):
+            if distance_pct < 2.0:
+                score -= 5
+                warnings.append(f"Price Near Resistance ({distance_pct:.1f}%)")
 
-        # 10. Opposing CHoCH Penalty
-        choch_penalty = 0
+        # 10. Opposing CHoCH penalty
         if opposing_choch:
-            choch_penalty = 8
-            score -= choch_penalty
+            score -= 8
+            warnings.append("Opposing CHoCH (active)")
 
+        # 11. Advanced Analytics Contributions
+        if advanced_data:
+            # Liquidity Sweep
+            ls = advanced_data.get("liquidity_sweep")
+            if ls:
+                if ls.get("buy_side_sweep"):
+                    score += 5
+                    reasons.append("Buy Side Liquidity Sweep")
+                if ls.get("sell_side_sweep"):
+                    score -= 5
+                    warnings.append("Sell Side Liquidity Sweep")
+
+            # FVG
+            fvg = advanced_data.get("fvg")
+            if fvg:
+                if fvg.get("bullish_fvg") and not fvg.get("filled"):
+                    score += 5
+                    reasons.append("Unfilled Bullish FVG")
+                elif fvg.get("bearish_fvg") and not fvg.get("filled"):
+                    score -= 5
+                    warnings.append("Unfilled Bearish FVG")
+
+            # Order Block
+            ob = advanced_data.get("order_block")
+            if ob:
+                if ob.get("valid"):
+                    if ob.get("bullish_ob"):
+                        score += 5
+                        reasons.append("Bullish Order Block")
+                    elif ob.get("bearish_ob"):
+                        score -= 5
+                        warnings.append("Bearish Order Block")
+
+            # Premium/Discount
+            pd_zone = advanced_data.get("premium_discount")
+            if pd_zone:
+                if pd_zone.get("discount"):
+                    score += 4
+                    reasons.append("Discount Zone")
+                elif pd_zone.get("premium"):
+                    score -= 4
+                    warnings.append("Premium Zone")
+
+            # Volume Profile
+            vp = advanced_data.get("volume_profile")
+            if vp and vp.get("poc"):
+                dist_poc = vp.get("distance_to_poc", 0)
+                if dist_poc < 2:
+                    score += 3
+                    reasons.append("Near POC")
+                # else no effect
+
+            # VWAP
+            vwap_data = advanced_data.get("vwap")
+            if vwap_data and vwap_data.get("vwap"):
+                if vwap_data["position"] == "above":
+                    score += 4
+                    reasons.append("Price Above VWAP")
+                elif vwap_data["position"] == "below":
+                    score -= 4
+                    warnings.append("Price Below VWAP")
+
+            # Open Interest
+            oi = advanced_data.get("open_interest")
+            if oi and oi.get("state") not in ("unavailable", "unknown"):
+                if oi["state"] == "Long Build Up":
+                    score += 4
+                    reasons.append("OI Long Build Up")
+                elif oi["state"] == "Short Build Up":
+                    score -= 4
+                    warnings.append("OI Short Build Up")
+                elif oi["state"] == "Short Covering":
+                    score += 3
+                    reasons.append("OI Short Covering")
+                elif oi["state"] == "Long Unwinding":
+                    score -= 3
+                    warnings.append("OI Long Unwinding")
+
+            # Funding Rate
+            fr = advanced_data.get("funding_rate")
+            if fr and fr.get("bias") != "unavailable":
+                if fr["bias"] == "Bullish (Costly Longs)":
+                    score += 3
+                    reasons.append("Funding Bullish Bias")
+                elif fr["bias"] == "Bearish (Costly Shorts)":
+                    score -= 3
+                    warnings.append("Funding Bearish Bias")
+
+            # ATR Volatility
+            atr_vol = advanced_data.get("atr_volatility")
+            if atr_vol:
+                if atr_vol["volatility"] == "High Volatility":
+                    score -= 3
+                    warnings.append("High Volatility")
+                elif atr_vol["volatility"] == "Low Volatility":
+                    score += 3
+                    reasons.append("Low Volatility Contraction")
+
+            # EMA Slope
+            ema_slopes = advanced_data.get("ema_slope")
+            if ema_slopes:
+                if all(ema_slopes.get(f"EMA{p}_slope_pct", 0) > 0.1 for p in [20,50]):
+                    score += 4
+                    reasons.append("EMA Slopes Positive")
+
+            # Divergences
+            rsi_div = advanced_data.get("rsi_divergence")
+            if rsi_div:
+                if rsi_div.get("bullish_divergence"):
+                    score += 6
+                    reasons.append("RSI Bullish Divergence")
+                elif rsi_div.get("bearish_divergence"):
+                    score -= 6
+                    warnings.append("RSI Bearish Divergence")
+
+            macd_div = advanced_data.get("macd_divergence")
+            if macd_div:
+                if macd_div.get("bullish_div"):
+                    score += 6
+                    reasons.append("MACD Bullish Divergence")
+                elif macd_div.get("bearish_div"):
+                    score -= 6
+                    warnings.append("MACD Bearish Divergence")
+
+            # Candlestick Patterns
+            cp = advanced_data.get("candlestick_patterns")
+            if cp:
+                if cp.get("engulfing_bullish") or cp.get("morning_star"):
+                    score += 4
+                    reasons.append("Bullish Candlestick")
+                elif cp.get("engulfing_bearish") or cp.get("evening_star"):
+                    score -= 4
+                    warnings.append("Bearish Candlestick")
+
+            # SR Strength
+            sr = advanced_data.get("sr_strength")
+            if sr:
+                if sr.get("valid_support"):
+                    score += 3
+                    reasons.append("Strong Support")
+                if sr.get("valid_resistance"):
+                    score -= 2
+                    warnings.append("Strong Resistance")
+
+            # Breakout Quality
+            bq = advanced_data.get("breakout_quality")
+            if bq:
+                if bq["quality"] == "Real Breakout":
+                    score += 7
+                    reasons.append("Real Breakout")
+                elif bq["quality"] == "Fake Breakout":
+                    score -= 5
+                    warnings.append("Fake Breakout")
+
+            # Trendline Break
+            tl = advanced_data.get("trendline_break")
+            if tl and tl.get("trendline_break"):
+                if tl["trendline_break"] == "bullish":
+                    score += 5
+                    reasons.append("Bullish Trendline Break")
+                elif tl["trendline_break"] == "bearish":
+                    score -= 5
+                    warnings.append("Bearish Trendline Break")
+
+            # Fibonacci
+            fib = advanced_data.get("fibonacci")
+            if fib and fib.get("golden_zone"):
+                low, high = fib["golden_zone"]
+                if low <= last["close"] <= high:
+                    score += 3
+                    reasons.append("Price in Golden Zone")
+
+            # Session Detection (weight 2)
+            session = advanced_data.get("session")
+            if session and session["session"] in ("London", "New York"):
+                score += 2
+                reasons.append(f"{session['session']} Session")
+
+            # Market Regime
+            regime = advanced_data.get("market_regime")
+            if regime:
+                if "Trending" in regime["regime"]:
+                    score += 6
+                    reasons.append("Trending Market")
+                elif "Ranging" in regime["regime"]:
+                    score -= 3
+                    warnings.append("Ranging/Choppy")
+
+            # Correlation Filter
+            corr = advanced_data.get("correlation")
+            if corr and corr["btc_correlation"] is not None:
+                if corr["btc_correlation"] > 0.7:
+                    score += 4
+                    reasons.append("High BTC Correlation")
+
+        # Base Score before strength factor
         base_score = score
 
         # Strength Factor
@@ -134,105 +340,64 @@ class ScoringEngine:
             score *= 0.8
         elif strength == "Medium":
             score *= 0.9
-        # Very Strong بدون تغییر
+        # Very Strong, Strong unchanged
 
         score = max(0, min(100, score))
 
         # ==================== محاسبه Confidence ====================
-        # مجموع تأییدیه‌ها
-        conf_confirm = sum(c[1] for c in confirmations) if confirmations else 0
-        # جریمه‌ها
-        conf_penalty = 0
-        if location_penalty:
-            conf_penalty += 5
-        if opposing_choch:
-            conf_penalty += 20
-        if strength == "Weak":
-            conf_penalty += 15
-        elif strength == "Medium":
-            conf_penalty += 5
-        if last["ADX"] < 15:
-            conf_penalty += 10
-
-        raw_conf = 30 + conf_confirm - conf_penalty
-        confidence = (raw_conf + score) / 2   # ترکیب با Score
-        confidence = max(10, min(90, confidence))
-
-        # ==================== Reasons و Warnings ====================
-        reasons = []
-        warnings = []
-
-        # اولویت‌بندی دلایل: Market Structure, BOS, MTF, EMA, ADX, Volume, RSI, MACD
+        conf = 0
+        # Trend alignment
         if struct_trend == "bullish":
-            reasons.append("Market Structure Bullish")
+            conf += 15
         elif struct_trend == "bearish":
-            warnings.append("Market Structure Bearish")
-
-        if last_bos:
-            if last_bos["type"] == "bullish":
-                reasons.append("BOS Bullish Break")
-            else:
-                warnings.append("BOS Bearish Break")
-
-        if opposing_choch:
-            warnings.append("Opposing CHoCH (active)")
-
-        if "Bullish" in mtf_signal:
-            reasons.append(f"MTF {mtf_signal}")
-        elif "Bearish" in mtf_signal:
-            warnings.append(f"MTF {mtf_signal}")
-
-        if last["EMA20"] > last["EMA50"]:
-            reasons.append("EMA20 > EMA50")
-        if last["EMA50"] > last["EMA200"]:
-            reasons.append("EMA50 > EMA200")
-
-        if last["ADX"] >= 25:
-            reasons.append("Strong ADX")
-        elif last["ADX"] < 15:
-            warnings.append("Weak ADX")
-
-        if 45 <= rsi <= 65:
-            reasons.append("Healthy RSI")
-        elif rsi > 75:
-            warnings.append("Overbought RSI")
-
-        if last["MACD"] > last["MACD_SIGNAL"]:
-            reasons.append("Bullish MACD")
-
-        if last["volume"] > last["AVG_VOLUME"]:
-            reasons.append("High Volume")
+            conf -= 15
+        # Strength
+        if strength == "Very Strong":
+            conf += 20
+        elif strength == "Strong":
+            conf += 15
+        elif strength == "Medium":
+            conf += 5
         else:
-            warnings.append("Low Volume")
+            conf -= 10
+        # MTF
+        if "Bullish" in mtf_signal:
+            conf += 15
+        elif "Bearish" in mtf_signal:
+            conf -= 10
+        # Volume (Z-score)
+        if vol_z > 0.5:
+            conf += 10
+        elif vol_z < -0.5:
+            conf -= 5
+        # Breakout
+        if breakout:
+            conf += 15
+        # Regime
+        if regime:
+            if "Trending" in regime["regime"]:
+                conf += 10
+            elif "Ranging" in regime["regime"]:
+                conf -= 5
+        # Divergence (add confidence if present)
+        if rsi_div and rsi_div.get("bullish_divergence"):
+            conf += 5
+        if macd_div and macd_div.get("bullish_div"):
+            conf += 5
 
-        if location_penalty:
-            warnings.append(f"Price Near Resistance ({distance_pct:.1f}%)")
+        conf = max(10, min(100, conf))
 
-        # محدود به ۵ دلیل
-        reasons = reasons[:5]
-
-        # حذف هشدارهای تکراری یا کم‌اهمیت
-        if "Low Volume" in warnings and "High Volume" in reasons:
-            warnings.remove("Low Volume")
-        if "Opposing CHoCH (active)" in warnings and not opposing_choch:
-            warnings.remove("Opposing CHoCH (active)")
+        # حذف دلایل تکراری (حفظ ترتیب)
+        reasons = list(dict.fromkeys(reasons))
+        warnings = list(dict.fromkeys(warnings))
 
         return {
             "base_score": int(base_score),
             "mtf_bonus": int(mtf_delta),
             "score": int(round(score)),
-            "confidence": int(round(confidence)),
-            "breakout": last["close"] > resistance_20 and last["volume"] > 1.2 * last["AVG_VOLUME"],
+            "confidence": int(conf),
+            "breakout": breakout,
             "reasons": reasons,
-            "warnings": warnings
+            "warnings": warnings,
+            "strength": strength
         }
-
-    @staticmethod
-    def action(score, breakout=False):
-        if breakout and score >= WATCH_SCORE:
-            return "BUY BREAKOUT"
-        if score >= BUY_SCORE:
-            return "BUY"
-        if score >= WATCH_SCORE:
-            return "WATCH"
-        return "NO TRADE"
