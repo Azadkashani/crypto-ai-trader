@@ -19,18 +19,28 @@ class OrderManager:
             'apiKey': API_KEY,
             'secret': API_SECRET,
             'enableRateLimit': True,
-            'options': {'defaultType': 'swap'},  # perpetual futures
+            'options': {'defaultType': 'swap'},
         })
         if TESTNET:
-            # ساختار صحیح URLهای تست‌نت Gate.io Futures
+            # تنظیم مستقیم آدرس‌های تست‌نت در最深 سطح ccxt
+            exchange.urls['api'] = {
+                'public': 'https://fx-api-testnet.gateio.ws/api/v4',
+                'private': 'https://fx-api-testnet.gateio.ws/api/v4',
+            }
+            # همچنین futures testnet endpoint
+            exchange.urls['test'] = {
+                'public': 'https://fx-api-testnet.gateio.ws/api/v4',
+                'private': 'https://fx-api-testnet.gateio.ws/api/v4',
+            }
+            # برای fetch_positions و fetch_balance که از privateFuturesGet استفاده می‌کنند
+            exchange.options['gate'] = {
+                'testnet': True,
+            }
+            # بازنویسی مستقیم آدرس futures
             exchange.urls['api']['futures'] = {
                 'public': 'https://fx-api-testnet.gateio.ws/api/v4',
                 'private': 'https://fx-api-testnet.gateio.ws/api/v4',
             }
-            exchange.urls['api']['spot'] = exchange.urls['api']['futures']  # بعضی call ها ممکن است spot را هم صدا بزنند
-            exchange.urls['api']['wallet'] = exchange.urls['api']['futures']
-            exchange.urls['api']['margin'] = exchange.urls['api']['futures']
-            exchange.urls['api']['contract'] = exchange.urls['api']['futures']
         return exchange
 
     def set_leverage(self, symbol, leverage):
