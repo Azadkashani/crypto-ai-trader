@@ -1,9 +1,11 @@
 """
 Crypto AI Bot v5.6
-Advanced Scoring Engine (Balanced Importance Weights)
+Advanced Scoring Engine (Balanced Confidence + Weighted Reasons)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
+from weights import REASON_WEIGHTS, WARNING_WEIGHTS
+
 
 class ScoringEngine:
 
@@ -335,19 +337,20 @@ class ScoringEngine:
 
         score = max(0, min(100, score))
 
-        # ==================== محاسبه Confidence (همان روش قبلی) ====================
+        # ==================== محاسبه Confidence (متعادل‌تر) ====================
         conf = 0
+        
         if struct_trend == "bullish":
             conf += 15
         elif struct_trend == "bearish":
             conf -= 15
 
         if strength == "Very Strong":
-            conf += 20
+            conf += 25
         elif strength == "Strong":
-            conf += 15
+            conf += 18
         elif strength == "Medium":
-            conf += 5
+            conf += 10
         else:
             conf -= 10
 
@@ -359,10 +362,16 @@ class ScoringEngine:
         if vol_z > 0.5:
             conf += 10
         elif vol_z < -0.5:
-            conf -= 5
+            conf -= 3
 
         if breakout:
             conf += 15
+
+        if last_bos:
+            conf += 10
+
+        if last["EMA20"] > last["EMA50"] and last["EMA50"] > last["EMA200"]:
+            conf += 5
 
         if regime:
             if "Trending" in regime["regime"]:
@@ -378,12 +387,30 @@ class ScoringEngine:
         if opposing_choch:
             conf -= 5
         if atr_vol and atr_vol["volatility"] == "High Volatility":
-            conf -= 5
+            conf -= 3
+        if oi and oi.get("state") == "Long Unwinding":
+            conf -= 2
+        if macd_div and macd_div.get("bearish_div"):
+            conf -= 4
 
         conf = max(10, min(100, conf))
 
+        # حذف دلایل تکراری
         reasons = list(dict.fromkeys(reasons))
         warnings = list(dict.fromkeys(warnings))
+
+        # افزودن وزن‌ها به Reasons و Warnings
+        weighted_reasons = []
+        for r in reasons:
+            weight = REASON_WEIGHTS.get(r, 1)
+            stars = "★" * weight
+            weighted_reasons.append(f"{stars} {r}")
+
+        weighted_warnings = []
+        for w in warnings:
+            weight = WARNING_WEIGHTS.get(w, 1)
+            stars = "★" * weight
+            weighted_warnings.append(f"{stars} {w}")
 
         return {
             "base_score": int(base_score),
@@ -393,5 +420,7 @@ class ScoringEngine:
             "breakout": breakout,
             "reasons": reasons,
             "warnings": warnings,
+            "weighted_reasons": weighted_reasons,
+            "weighted_warnings": weighted_warnings,
             "strength": strength
         }
