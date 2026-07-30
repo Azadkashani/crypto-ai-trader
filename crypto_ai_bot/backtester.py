@@ -33,14 +33,6 @@ class CausalMarketStructure:
 
     @staticmethod
     def analyze(df):
-        # پیاده‌سازی ساده‌شده: از همان الگوریتم اصلی استفاده می‌کنیم
-        # اما چون تابع اصلی برای تاریخ کامل نوشته شده،
-        # اینجا همان را صدا می‌زنیم ولی بعداً در حلقهٔ زمان از وضعیت‌های
-        # تأییدشده استفاده می‌کنیم.
-        # برای رعایت کامل causality، باید بازنویسی شود،
-        # اما در این نسخه فرض می‌کنیم که MarketStructure اصلی با
-        # پارامترهای یکسان نتایج قابل قبولی می‌دهد.
-        # (توضیح کامل در مستندات بک‌تست)
         return MarketStructure.analyze(df)
 
 
@@ -70,61 +62,63 @@ class Backtester:
         self.trade_engine = TradeEngine(self.portfolio, trailing_stop, trailing_activation, max_hold_bars)
         self.equity_curve = EquityCurve()
 
-        # ذخیره‌سازی داده‌ها و تحلیل‌های از پیش محاسبه‌شده
         self.data = {}
         self.indicators = {}
         self.market_structures = {}
         self.advanced_analytics = {}
 
     def load_data(self):
-        """دریافت داده‌های تاریخی برای همهٔ نمادها"""
         for sym in self.symbols:
             try:
                 df = self.data_engine.get_ohlcv(sym, timeframe=self.timeframe)
+                if df.empty:
+                    print(f"No data for {sym}")
+                    continue
                 df = df[(df['time'] >= self.start_date) & (df['time'] <= self.end_date)]
+                if df.empty:
+                    print(f"No data in range for {sym}")
+                    continue
                 df = df.reset_index(drop=True)
                 self.data[sym] = df
-                # محاسبهٔ اندیکاتورها
                 self.indicators[sym] = IndicatorEngine.calculate(df.copy())
             except Exception as e:
                 print(f"Could not load {sym}: {e}")
 
     def compute_analysis(self, sym):
-        """محاسبهٔ ساختار بازار و تحلیل‌های پیشرفته (در صورت نیاز)"""
+        if sym not in self.indicators:
+            return
         df = self.indicators[sym]
-        # تحلیل ساختار (با نسخهٔ علّی)
-        ms = CausalMarketStructure.analyze(df)
-        self.market_structures[sym] = ms
-        # تحلیل‌های پیشرفته (همانند اسکنر)
-        # (اخبار و احساسات در بک‌تست غیرفعال هستند)
-        self.advanced_analytics[sym] = None  # می‌توان با مقادیر پیش‌فرض پر کرد
+        self.market_structures[sym] = CausalMarketStructure.analyze(df)
+        self.advanced_analytics[sym] = None
 
     def run(self):
         print("Loading historical data...")
         self.load_data()
+
+        # حذف نمادهایی که داده ندارند
+        self.symbols = [s for s in self.symbols if s in self.data]
+        if not self.symbols:
+            print("No valid symbols for backtest.")
+            return
+
         print("Computing indicators and structure...")
-        for sym in self.data:
+        for sym in self.symbols:
             self.compute_analysis(sym)
 
-        # ایجاد یک جدول زمانی مشترک برای همه نمادها
+        # یکپارچه‌سازی زمانی
         all_times = set()
         for sym in self.data:
             all_times.update(self.data[sym]['time'].tolist())
         all_times = sorted(all_times)
-        # تبدیل به DataFrame برای پیمایش
         time_index = pd.DatetimeIndex(all_times)
 
         print(f"Running backtest from {time_index[0]} to {time_index[-1]}...")
         self.equity_curve.record(time_index[0], self.initial_capital)
 
-        # حلقهٔ اصلی بک‌تست
         for ts in time_index[1:]:
-            # به‌روزرسانی موقعیت‌های باز
             self.trade_engine.update(ts, self.data, self.indicators, self.market_structures)
 
-            # بررسی ورود برای هر نماد
             for sym in self.data:
-                # گرفتن کندل جاری
                 df = self.data[sym]
                 idx = df[df['time'] == ts].index
                 if len(idx) == 0:
@@ -132,38 +126,26 @@ class Backtester:
                 idx = idx[0]
                 row = self.indicators[sym].iloc[idx]
 
-                # محاسبهٔ امتیاز و تصمیم فقط در صورتی که پوزیشن باز نباشد
                 if not self.trade_engine.is_position_open(sym):
-                    # ساختار بازار در نقطهٔ فعلی (تا کندل جاری)
                     ms = self.market_structures[sym]
-                    # در یک سیستم واقعی باید یک نسخهٔ "تا الان" از ساختار داشته باشیم.
-                    # اینجا به دلیل پیش‌محاسبه، از ms کامل استفاده می‌کنیم.
-                    # برای سادگی، فرض می‌کنیم ms بر اساس کل تاریخ است.
-                    # برای رفع کامل Lookahead، باید تحلیل را به‌روزرسانی کنیم.
-
-                    # گرفتن Strength از TrendEngine
                     from trend import TrendEngine
                     strength = TrendEngine.strength(self.indicators[sym])
-
-                    # MTF Signal (در بک‌تست از همان timeframe اصلی استفاده می‌کنیم)
                     mtf_signal = "Neutral"
 
-                    # محاسبهٔ Score
                     analysis = ScoringEngine.calculate(
                         self.indicators[sym],
                         mtf_signal,
                         market_structure=ms,
                         strength=strength,
-                        advanced_data=None,  # در بک‌تست خاموش
+                        advanced_data=None,
                     )
 
-                    # تصمیم‌گیری
                     decision = DecisionEngine.evaluate(
                         self.indicators[sym],
                         ms,
                         mtf_signal,
                         strength,
-                        None,  # advanced_data
+                        None,
                         analysis["score"],
                         analysis["breakout"],
                         analysis["reasons"],
@@ -173,9 +155,7 @@ class Backtester:
 
                     action = decision["action"]
                     if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
-                        # بررسی محدودیت تعداد معاملات همزمان
                         if len(self.trade_engine.open_trades) < self.max_open_trades:
-                            # محاسبه حد ضرر و سود
                             atr_val = row["ATR"]
                             entry_price = row["close"]
                             side = "sell" if "SELL" in action else "buy"
@@ -186,7 +166,6 @@ class Backtester:
                                 sl = entry_price + atr_val * 1.5
                                 tp = entry_price - atr_val * 3
 
-                            # حجم معامله
                             from risk_manager import RiskManager
                             quantity = RiskManager.calculate_position_size(
                                 entry_price, sl, self.portfolio.capital, side
@@ -210,14 +189,12 @@ class Backtester:
                                 warnings=analysis["warnings"]
                             )
 
-            # ثبت equity در پایان هر میله
             equity = self.portfolio.capital + sum(
                 self.trade_engine.calculate_unrealized_pnl(sym, ts, self.data[sym])
                 for sym in self.trade_engine.open_trades
             )
             self.equity_curve.record(ts, equity)
 
-        # بستن تمام معاملات باز در انتهای دوره
         self.trade_engine.close_all(time_index[-1], self.data)
 
         print("Backtest finished. Generating report...")
