@@ -132,6 +132,8 @@ class MarketScanner:
                 breakout = analysis["breakout"]
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
+                weighted_reasons = analysis.get("weighted_reasons", [])
+                weighted_warnings = analysis.get("weighted_warnings", [])
 
                 # اضافه کردن پیام ضعف به هشدارها (بدون تکرار با Low Volume)
                 if weak_msg:
@@ -143,6 +145,7 @@ class MarketScanner:
                             weak_msg = None
                     if weak_msg:
                         warnings.append(weak_msg)
+                        weighted_warnings.append(f"★★ {weak_msg}")  # وزن پیش‌فرض 2 برای ضعف روند
 
                 # ==============================
                 # Action جدید با آستانه‌های متعادل
@@ -163,11 +166,13 @@ class MarketScanner:
                     action = "NO TRADE"
                     if "Bearish Trend" not in warnings:
                         warnings.append("Bearish Trend")
+                        weighted_warnings.append("★★★★★ Bearish Trend")
 
                 # روند خنثی فقط هشدار
                 if trend == "Sideways" and action not in ("NO TRADE",):
                     if "Sideways Trend" not in warnings:
                         warnings.append("Sideways Trend")
+                        weighted_warnings.append("★★ Sideways Trend")
 
                 last = df.iloc[-1]
                 atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
@@ -196,8 +201,10 @@ class MarketScanner:
                     "StopLoss": stop_loss,
                     "TakeProfit": take_profit,
                     "Volume Breakout": breakout,
-                    "Reasons": ", ".join(reasons),
+                    "Reasons": ", ".join(reasons),                     # فرمت متنی ساده
                     "Warnings": ", ".join(warnings),
+                    "Weighted Reasons": weighted_reasons,             # جدید
+                    "Weighted Warnings": weighted_warnings,           # جدید
                     "advanced": advanced_data
                 })
 
