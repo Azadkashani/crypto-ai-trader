@@ -1,22 +1,44 @@
 """
-Fair Value Gap (FVG) Detection
+Fair Value Gap (FVG) Detection (Advanced)
 """
+
+import numpy as np
 
 class FVG:
     @staticmethod
     def detect(df):
         if len(df) < 3:
-            return {"bullish_fvg": False, "bearish_fvg": False, "gap_size": 0, "filled": None}
-        last3 = df.iloc[-3:]
-        c1 = last3.iloc[0]
-        c3 = last3.iloc[2]
-        if c3["low"] > c1["high"]:
-            gap_size = c3["low"] - c1["high"]
-            filled = df["low"].iloc[-1] <= c1["high"]
-            return {"bullish_fvg": True, "bearish_fvg": False, "gap_size": gap_size, "filled": filled}
-        elif c3["high"] < c1["low"]:
-            gap_size = c1["low"] - c3["high"]
-            filled = df["high"].iloc[-1] >= c1["low"]
-            return {"bullish_fvg": False, "bearish_fvg": True, "gap_size": gap_size, "filled": filled}
-        else:
-            return {"bullish_fvg": False, "bearish_fvg": False, "gap_size": 0, "filled": None}
+            return {"bullish_fvg": [], "bearish_fvg": [], "active_fvg": None}
+        # کندل‌ها را بررسی می‌کنیم: هرگاه Low کندل سوم > High کندل اول (bullish FVG)
+        # یا High کندل سوم < Low کندل اول (bearish FVG)
+        gaps = []
+        for i in range(2, len(df)):
+            c1 = df.iloc[i-2]
+            c3 = df.iloc[i]
+            if c3["low"] > c1["high"]:
+                gaps.append({"type": "bullish", "index": i, "gap_high": c3["low"], "gap_low": c1["high"], "filled": False})
+            elif c3["high"] < c1["low"]:
+                gaps.append({"type": "bearish", "index": i, "gap_high": c1["low"], "gap_low": c3["high"], "filled": False})
+        # بررسی پر شدن
+        current_price = df["close"].iloc[-1]
+        for g in gaps:
+            if g["type"] == "bullish" and df["low"].iloc[-1] <= g["gap_high"]:
+                g["filled"] = True
+            elif g["type"] == "bearish" and df["high"].iloc[-1] >= g["gap_low"]:
+                g["filled"] = True
+        # آخرین FVG فعال
+        active = None
+        for g in reversed(gaps):
+            if not g["filled"]:
+                active = g
+                break
+        # جداسازی صعودی/نزولی
+        bullish_fvg = [g for g in gaps if g["type"] == "bullish" and not g["filled"]]
+        bearish_fvg = [g for g in gaps if g["type"] == "bearish" and not g["filled"]]
+        return {
+            "bullish_fvg": len(bullish_fvg) > 0,
+            "bearish_fvg": len(bearish_fvg) > 0,
+            "active_fvg": active,
+            "bullish_count": len(bullish_fvg),
+            "bearish_count": len(bearish_fvg)
+        }
