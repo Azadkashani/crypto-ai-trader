@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Advanced Report Engine with Ranking
+Advanced Report Engine with News & Sentiment
 """
 
 import pandas as pd
@@ -35,7 +35,12 @@ class ReportEngine:
             "Entry Quality",
             "Trade Readiness"
         ]
-        # select only existing columns
+        # افزودن ستون‌های News/Sentiment در صورت وجود
+        if "News Score" in table.columns:
+            columns.insert(columns.index("Action"), "News Score")
+        if "Sentiment Score" in table.columns:
+            columns.insert(columns.index("Action"), "Sentiment Score")
+
         cols = [c for c in columns if c in table.columns]
         print(table[cols].to_string(index=False))
         print("=" * 140)
@@ -48,6 +53,8 @@ class ReportEngine:
             print(f"Symbol: {item['Symbol']}")
             print(f"Action: {item['Action']}  |  Confidence: {item['Confidence']}%  |  Readiness: {item['Trade Readiness']}")
             print(f"Entry Quality: {item.get('Entry Quality', 'N/A')}  |  Risk Level: {item.get('Summary', {}).get('Risk Level', 'N/A')}")
+            if "News Score" in item:
+                print(f"News Score: {item['News Score']}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
             print(f"Market Bias: {item['Summary'].get('Market Bias', '')}")
             print(f"Status: {item['Summary'].get('Current Status', '')}")
             print(f"Decision Reason: {item['Summary'].get('Decision Reason', '')}")
@@ -56,19 +63,27 @@ class ReportEngine:
                 print("Missing for Entry:")
                 for m in missing:
                     print(f"  - {m}")
-            # نمایش دلایل وزن‌دار
             weighted_reasons = item.get("Weighted Reasons", [])
             if weighted_reasons:
                 print("Key Reasons:")
                 for r in weighted_reasons[:5]:
                     print(f"  {r}")
+            weighted_warnings = item.get("Weighted Warnings", [])
+            if weighted_warnings:
+                print("Key Warnings:")
+                for w in weighted_warnings[:3]:
+                    print(f"  {w}")
             print("")
 
-        # نمایش جزئیات کامل برای همه فرصت‌ها (مانند قبل)
+        # جزئیات کامل برای همه فرصت‌ها
         print("\n" + "-" * 75)
         for item in results:
             print(f"\nSymbol: {item['Symbol']}")
-            # ... (باقی چاپ همانطور که بود)
             print(f"Action: {item['Action']}")
             print(f"Trade Readiness: {item['Trade Readiness']}")
-            # ...
+            if "News Score" in item:
+                print(f"News Score: {item['News Score']}")
+                print(f"Sentiment Score: {item['Sentiment Score']}")
+            print(f"Reasons: {item.get('Reasons', '')}")
+            print(f"Warnings: {item.get('Warnings', '')}")
+            print("-" * 75)
