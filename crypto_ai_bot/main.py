@@ -6,21 +6,33 @@ Main Trading Loop – 24/7 Automated Futures Trading
 import time
 from scanner import MarketScanner
 from report import ReportEngine
-from risk_manager import RiskManager
-from order_manager import OrderManager
 from config import (
-    TOP_RESULTS,
+    API_KEY,
+    API_SECRET,
     SCAN_INTERVAL_MINUTES,
     MAX_OPEN_TRADES,
     TRAILING_STOP_ENABLED,
     TRAILING_STOP_ACTIVATION,
 )
 
+# فعال بودن معاملات فقط در صورتی که هر دو کلید تنظیم شده باشند
+TRADING_ENABLED = bool(API_KEY and API_SECRET)
+if TRADING_ENABLED:
+    from risk_manager import RiskManager
+    from order_manager import OrderManager
+
 
 def main():
     print("Starting Crypto AI Bot...")
     scanner = MarketScanner()
-    order_mgr = OrderManager()
+    order_mgr = None
+
+    if TRADING_ENABLED:
+        order_mgr = OrderManager()
+        print("Trading mode: ENABLED")
+    else:
+        print("Trading mode: DISABLED (API keys not set)")
+        print("Running in scan-only mode...")
 
     while True:
         print("\nScanning Market...")
@@ -31,7 +43,14 @@ def main():
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # انتخاب بهترین فرصت (بالاترین Trade Readiness) که Action قابل معامله باشد
+        # اگر حالت معاملاتی فعال نیست، فقط گزارش بده و دوباره اسکن کن
+        if not TRADING_ENABLED:
+            ReportEngine.show(results)
+            print(f"\nNext scan in {SCAN_INTERVAL_MINUTES} minutes...")
+            time.sleep(SCAN_INTERVAL_MINUTES * 60)
+            continue
+
+        # ========== بخش معاملات (فقط در صورت وجود کلید) ==========
         best_trade = None
         for res in results:
             if res.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
@@ -43,15 +62,12 @@ def main():
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # بررسی وجود پوزیشن باز
         open_positions = order_mgr.check_open_positions()
         if len(open_positions) >= MAX_OPEN_TRADES:
             print("A position is already open. Waiting...")
-            # اگر تریلینگ استاپ فعال است، آن را بررسی و اعمال کن (برای سادگی، این بخش به دلیل نیاز به ذخیره‌سازی وضعیت، کاملاً پیاده‌سازی نشده ولی منطق کلی وجود دارد)
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # دریافت موجودی حساب
         balance = order_mgr.fetch_balance()
         if balance <= 0:
             print("Insufficient balance.")
@@ -64,26 +80,19 @@ def main():
         take_profit = best_trade["TakeProfit"]
         action = best_trade["Action"]
 
-        # تعیین جهت معامله
-        if "SELL" in action:
-            side = "sell"
-        else:
-            side = "buy"
+        side = "sell" if "SELL" in action else "buy"
 
-        # بررسی ریسک/ریوارد
         if not RiskManager.is_trade_valid(entry, stop_loss, take_profit, side):
             print("Risk/Reward too low. Skipping.")
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # محاسبه حجم قرارداد
         quantity = RiskManager.calculate_position_size(entry, stop_loss, balance, side)
         if quantity <= 0:
             print("Invalid quantity.")
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # اجرای معامله (اهرم پویا درون place_market_order اعمال می‌شود)
         print(f"Opening {action} on {symbol}: Entry={entry}, SL={stop_loss}, TP={take_profit}, Qty={quantity}")
         order_result = order_mgr.place_market_order(
             symbol=symbol,
@@ -95,7 +104,6 @@ def main():
         )
         print(f"Trade opened. Entry order: {order_result['entry_order']['id']}")
 
-        # تریلینگ استاپ (نظارت تا بسته شدن)
         if TRAILING_STOP_ENABLED:
             tp_target = take_profit
             entry_price = entry
@@ -112,15 +120,9 @@ def main():
                 current_price = float(pos.get('markPrice', 0))
 
                 if side == "buy":
-                    if tp_target != entry_price:
-                        progress = (current_price - entry_price) / (tp_target - entry_price)
-                    else:
-                        progress = 0
+                    progress = (current_price - entry_price) / (tp_target - entry_price) if tp_target != entry_price else 0
                 else:
-                    if entry_price != tp_target:
-                        progress = (entry_price - current_price) / (entry_price - tp_target)
-                    else:
-                        progress = 0
+                    progress = (entry_price - current_price) / (entry_price - tp_target) if entry_price != tp_target else 0
 
                 if progress >= TRAILING_STOP_ACTIVATION and current_sl != entry_price:
                     print(f"Activating trailing stop (progress={progress:.2f}): Moving SL to entry.")
@@ -136,7 +138,6 @@ def main():
 
                 time.sleep(10)
 
-        # بعد از بسته شدن، دوباره اسکن می‌شود
         time.sleep(SCAN_INTERVAL_MINUTES * 60)
 
 
