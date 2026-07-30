@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.6
-Advanced Scoring Engine (Balanced Confidence + Weighted Reasons)
+Advanced Scoring Engine (Balanced Confidence + Weighted Reasons + News/Sentiment)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
@@ -10,7 +10,8 @@ from weights import REASON_WEIGHTS, WARNING_WEIGHTS
 class ScoringEngine:
 
     @staticmethod
-    def calculate(df, mtf_signal="Neutral", market_structure=None, strength="Medium", advanced_data=None):
+    def calculate(df, mtf_signal="Neutral", market_structure=None, strength="Medium",
+                  advanced_data=None, news_score=0, sentiment_score=0):
         last = df.iloc[-1]
 
         # ==================== محاسبه Score ====================
@@ -326,6 +327,9 @@ class ScoringEngine:
                     score += 4
                     reasons.append("High BTC Correlation")
 
+        # ==================== افزودن امتیاز اخبار و احساسات ====================
+        score += news_score + sentiment_score
+
         # Base Score before strength factor
         base_score = score
 
@@ -337,7 +341,7 @@ class ScoringEngine:
 
         score = max(0, min(100, score))
 
-        # ==================== محاسبه Confidence (متعادل‌تر) ====================
+        # ==================== محاسبه Confidence (متعادل‌تر + News/Sentiment) ====================
         conf = 0
         
         if struct_trend == "bullish":
@@ -393,13 +397,16 @@ class ScoringEngine:
         if macd_div and macd_div.get("bearish_div"):
             conf -= 4
 
+        # افزودن تأثیر News و Sentiment بر Confidence
+        conf += news_score * 0.5 + sentiment_score * 0.3
+
         conf = max(10, min(100, conf))
 
         # حذف دلایل تکراری
         reasons = list(dict.fromkeys(reasons))
         warnings = list(dict.fromkeys(warnings))
 
-        # افزودن وزن‌ها به Reasons و Warnings (اصلاح‌شده برای ساختار جدید weights)
+        # افزودن وزن‌ها به Reasons و Warnings
         weighted_reasons = []
         for r in reasons:
             weight = REASON_WEIGHTS.get(r, 1)
@@ -408,7 +415,6 @@ class ScoringEngine:
 
         weighted_warnings = []
         for w in warnings:
-            # استخراج وزن عددی از tuple (weight, severity)
             weight_tuple = WARNING_WEIGHTS.get(w, (1, "minor"))
             weight = weight_tuple[0] if isinstance(weight_tuple, tuple) else weight_tuple
             stars = "★" * weight
@@ -424,5 +430,7 @@ class ScoringEngine:
             "warnings": warnings,
             "weighted_reasons": weighted_reasons,
             "weighted_warnings": weighted_warnings,
-            "strength": strength
+            "strength": strength,
+            "news_score": news_score,
+            "sentiment_score": sentiment_score
         }
