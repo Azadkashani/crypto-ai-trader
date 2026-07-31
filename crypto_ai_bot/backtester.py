@@ -104,7 +104,9 @@ class Backtester:
                     try:
                         df = pd.read_csv(csv_path)
                         print(f"Loaded CSV: {csv_path}")
+                        # نقشه‌برداری کامل برای ستون‌های مختلف، مخصوصاً open_time
                         col_map = {
+                            'open_time': 'time',       # اضافه شدن open_time
                             'timestamp': 'time', 'date': 'time', 'datetime': 'time',
                             'open': 'open', 'Open': 'open',
                             'high': 'high', 'High': 'high',
