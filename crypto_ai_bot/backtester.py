@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Backtester Engine – Full version with CSV support, Mock, API, yfinance
+Backtester Engine – Full version with CSV support, Mock, API (MEXC, Bybit, etc.), and internal MTF
 """
 
 import pandas as pd
@@ -17,6 +17,7 @@ from portfolio import Portfolio
 from equity_curve import EquityCurve
 from performance import Performance
 from backtest_report import BacktestReport
+from mtf_engine import MTFEngine
 
 
 class CausalMarketStructure:
@@ -50,12 +51,22 @@ class Backtester:
         self.use_mock = use_mock
 
         self.exchange = None
-        if not use_mock and exchange_name in ('binance', 'gate', 'kucoin'):
-            if exchange_name == 'kucoin':
+        if not use_mock and exchange_name in ('binance', 'gate', 'kucoin', 'mexc', 'bybit'):
+            if exchange_name == 'mexc':
+                self.exchange = ccxt.mexc({
+                    'enableRateLimit': True,
+                    'options': {'defaultType': 'swap'}
+                })
+            elif exchange_name == 'bybit':
+                self.exchange = ccxt.bybit({
+                    'enableRateLimit': True,
+                    'options': {'defaultType': 'future'}
+                })
+            elif exchange_name == 'kucoin':
                 self.exchange = ccxt.kucoinfutures({'enableRateLimit': True})
             elif exchange_name == 'gate':
                 self.exchange = ccxt.gate({'enableRateLimit': True})
-            else:
+            else:  # binance
                 self.exchange = ccxt.binance({
                     'enableRateLimit': True,
                     'options': {'defaultType': 'future'}
@@ -104,9 +115,8 @@ class Backtester:
                     try:
                         df = pd.read_csv(csv_path)
                         print(f"Loaded CSV: {csv_path}")
-                        # نقشه‌برداری کامل برای ستون‌های مختلف، مخصوصاً open_time
                         col_map = {
-                            'open_time': 'time',       # اضافه شدن open_time
+                            'open_time': 'time',
                             'timestamp': 'time', 'date': 'time', 'datetime': 'time',
                             'open': 'open', 'Open': 'open',
                             'high': 'high', 'High': 'high',
@@ -188,6 +198,44 @@ class Backtester:
             except Exception as e:
                 print(f"yfinance failed for {sym}: {e}")
 
+    def _calculate_mtf_signal(self, df):
+        """
+        محاسبه سیگنال مولتی‌تایم‌فریم از داده یک‌ساعته با ساختن تایم‌فریم ۴ ساعته.
+        وزن‌ها: 1h=0.4, 4h=0.6 (تطبیق‌یافته از 15m/1h/4h اصلی).
+        """
+        # تایم‌فریم ۴ ساعته از روی ۱ ساعته
+        df_4h = df.resample('4h', on='time').agg({
+            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+        }).dropna()
+        if len(df_4h) < 20:
+            return "Neutral"
+        # محاسبه اندیکاتورها برای ۴ ساعته
+        df_4h_ind = IndicatorEngine.calculate(df_4h.copy())
+        from trend import TrendEngine
+        trend_1h = TrendEngine.detect(df)      # روی داده اصلی ۱ ساعته
+        trend_4h = TrendEngine.detect(df_4h_ind)
+
+        # شبیه‌سازی MTFEngine با وزن‌های ساده‌شده
+        results = {"1h": trend_1h, "4h": trend_4h}
+        weights = {"1h": 0.4, "4h": 0.6}
+        bullish = 0.0
+        bearish = 0.0
+        for tf, trend in results.items():
+            w = weights.get(tf, 0)
+            if trend == "Bullish":
+                bullish += w
+            elif trend == "Bearish":
+                bearish += w
+        if bullish >= 0.7:
+            return "Strong Bullish"
+        elif bearish >= 0.7:
+            return "Strong Bearish"
+        elif bullish > bearish:
+            return "Bullish"
+        elif bearish > bullish:
+            return "Bearish"
+        return "Neutral"
+
     def compute_analysis(self, sym):
         if sym not in self.indicators:
             return
@@ -232,7 +280,9 @@ class Backtester:
                     ms = self.market_structures[sym]
                     from trend import TrendEngine
                     strength = TrendEngine.strength(self.indicators[sym])
-                    mtf_signal = "Neutral"
+
+                    # محاسبه MTF از داده اصلی (۱ ساعته)
+                    mtf_signal = self._calculate_mtf_signal(self.indicators[sym])
 
                     analysis = ScoringEngine.calculate(
                         self.indicators[sym],
