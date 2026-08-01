@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.0
-Configuration File (Futures – Binance Testnet)
+Configuration File (Futures – Binance Demo)
 """
 
 # ==========================
@@ -10,6 +10,7 @@ EXCHANGE_NAME = "binance"
 API_KEY = "J8mCG1sDkitIVEVVVFYZdGpHna4xDc6G3Zdk7VdTFsCdS19rTLHhKzz2IbqOHkLH"
 API_SECRET = "ZHocE0JzoZIU8PbMup9Rqgx0Urg0ui56We5shCyrrr0o7fGRJW13bd2wz36PMqjf"
 TESTNET = True
+API_BASE_URL = "https://demo-api.binance.com/fapi/v1"
 
 # ==========================
 # Trading Settings
