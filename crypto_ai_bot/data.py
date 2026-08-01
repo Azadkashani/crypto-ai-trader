@@ -23,6 +23,15 @@ class MarketData:
                     'fapiPublic': API_BASE_URL,
                     'fapiPrivate': API_BASE_URL,
                 }
+            else:
+                # در حالت دمو (TESTNET=False) هم آدرس را تنظیم می‌کنیم
+                # تا از همان fapi.binance.com استفاده کند
+                self.exchange.urls['api'] = {
+                    'public': API_BASE_URL,
+                    'private': API_BASE_URL,
+                    'fapiPublic': API_BASE_URL,
+                    'fapiPrivate': API_BASE_URL,
+                }
         elif EXCHANGE_NAME.lower() == "gate":
             self.exchange = ccxt.gate({
                 "enableRateLimit": True,
