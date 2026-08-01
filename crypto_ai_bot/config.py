@@ -1,15 +1,15 @@
 """
 Crypto AI Bot v1.0
-Configuration File (Futures)
+Configuration File (Futures – Binance Testnet)
 """
 
 # ==========================
 # Exchange Settings
 # ==========================
-EXCHANGE_NAME = "gate"
-API_KEY = ""
-API_SECRET = ""
-TESTNET = False
+EXCHANGE_NAME = "binance"
+API_KEY = "J8mCG1sDkitIVEVVVFYZdGpHna4xDc6G3Zdk7VdTFsCdS19rTLHhKzz2IbqOHkLH"
+API_SECRET = "ZHocE0JzoZIU8PbMup9Rqgx0Urg0ui56We5shCyrrr0o7fGRJW13bd2wz36PMqjf"
+TESTNET = True
 
 # ==========================
 # Trading Settings
