@@ -1,11 +1,10 @@
 """
 Crypto AI Bot
-Order Manager – Binance Futures Testnet with Dynamic Leverage
+Order Manager – Binance Futures Demo with Dynamic Leverage
 """
 
 import ccxt
-import time
-from config import API_KEY, API_SECRET, TESTNET, TRAILING_STOP_ACTIVATION
+from config import API_KEY, API_SECRET, TESTNET, API_BASE_URL
 from risk_manager import RiskManager
 
 
@@ -22,12 +21,11 @@ class OrderManager:
         })
         if TESTNET:
             exchange.urls['api'] = {
-                'public': 'https://testnet.binancefuture.com/fapi/v1',
-                'private': 'https://testnet.binancefuture.com/fapi/v1',
-                'fapiPublic': 'https://testnet.binancefuture.com/fapi/v1',
-                'fapiPrivate': 'https://testnet.binancefuture.com/fapi/v1',
+                'public': API_BASE_URL,
+                'private': API_BASE_URL,
+                'fapiPublic': API_BASE_URL,
+                'fapiPrivate': API_BASE_URL,
             }
-            exchange.set_sandbox_mode(True)
         return exchange
 
     def set_leverage(self, symbol, leverage):
@@ -84,7 +82,7 @@ class OrderManager:
             sl_order = self.exchange.create_order(
                 symbol=symbol.replace("/", ""),
                 type='stop_market',
-                side='sell',
+                side='sell',            # برای لانگ؛ در صورت شرت باید buy باشد
                 amount=quantity,
                 params={'stopPrice': new_stop_price}
             )
