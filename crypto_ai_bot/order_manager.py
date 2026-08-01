@@ -19,13 +19,19 @@ class OrderManager:
             'enableRateLimit': True,
             'options': {'defaultType': 'future'},
         })
-        # تنظیم آدرس API برای هر دو حالت (دمو و تست‌نت)
-        exchange.urls['api'] = {
-            'public': API_BASE_URL,
-            'private': API_BASE_URL,
-            'fapiPublic': API_BASE_URL,
-            'fapiPrivate': API_BASE_URL,
-        }
+        if TESTNET:
+            # فعال‌سازی sandbox استاندارد
+            exchange.set_sandbox_mode(True)
+            # تنظیم آدرس دمو
+            exchange.urls['api'] = {
+                'public': API_BASE_URL,
+                'private': API_BASE_URL,
+                'fapiPublic': API_BASE_URL,
+                'fapiPrivate': API_BASE_URL,
+            }
+        else:
+            # برای حالت واقعی (اختیاری) – در حالت دمو اجرا نمی‌شود
+            pass
         return exchange
 
     def set_leverage(self, symbol, leverage):
@@ -82,7 +88,7 @@ class OrderManager:
             sl_order = self.exchange.create_order(
                 symbol=symbol.replace("/", ""),
                 type='stop_market',
-                side='sell',
+                side='sell',            # برای پوزیشن لانگ؛ در صورت شرت باید buy شود
                 amount=quantity,
                 params={'stopPrice': new_stop_price}
             )
