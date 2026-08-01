@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v4
-Main Trading Loop – 24/7 Automated Futures Trading
+Main Trading Loop – 24/7 Automated Futures Trading on Binance Testnet
 """
 
 import time
@@ -15,7 +15,6 @@ from config import (
     TRAILING_STOP_ACTIVATION,
 )
 
-# فعال بودن معاملات فقط در صورتی که هر دو کلید تنظیم شده باشند
 TRADING_ENABLED = bool(API_KEY and API_SECRET)
 if TRADING_ENABLED:
     from risk_manager import RiskManager
@@ -29,7 +28,7 @@ def main():
 
     if TRADING_ENABLED:
         order_mgr = OrderManager()
-        print("Trading mode: ENABLED")
+        print("Trading mode: ENABLED (Binance Testnet)")
     else:
         print("Trading mode: DISABLED (API keys not set)")
         print("Running in scan-only mode...")
@@ -43,14 +42,11 @@ def main():
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # اگر حالت معاملاتی فعال نیست، فقط گزارش بده و دوباره اسکن کن
         if not TRADING_ENABLED:
             ReportEngine.show(results)
-            print(f"\nNext scan in {SCAN_INTERVAL_MINUTES} minutes...")
             time.sleep(SCAN_INTERVAL_MINUTES * 60)
             continue
 
-        # ========== بخش معاملات (فقط در صورت وجود کلید) ==========
         best_trade = None
         for res in results:
             if res.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
@@ -79,7 +75,6 @@ def main():
         stop_loss = best_trade["StopLoss"]
         take_profit = best_trade["TakeProfit"]
         action = best_trade["Action"]
-
         side = "sell" if "SELL" in action else "buy"
 
         if not RiskManager.is_trade_valid(entry, stop_loss, take_profit, side):
@@ -95,12 +90,8 @@ def main():
 
         print(f"Opening {action} on {symbol}: Entry={entry}, SL={stop_loss}, TP={take_profit}, Qty={quantity}")
         order_result = order_mgr.place_market_order(
-            symbol=symbol,
-            side=side,
-            quantity=quantity,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            entry_price=entry,
+            symbol=symbol, side=side, quantity=quantity,
+            stop_loss=stop_loss, take_profit=take_profit, entry_price=entry,
         )
         print(f"Trade opened. Entry order: {order_result['entry_order']['id']}")
 
@@ -115,27 +106,21 @@ def main():
                 if not open_positions:
                     print("Position closed.")
                     break
-
                 pos = open_positions[0]
                 current_price = float(pos.get('markPrice', 0))
-
                 if side == "buy":
                     progress = (current_price - entry_price) / (tp_target - entry_price) if tp_target != entry_price else 0
                 else:
                     progress = (entry_price - current_price) / (entry_price - tp_target) if entry_price != tp_target else 0
-
                 if progress >= TRAILING_STOP_ACTIVATION and current_sl != entry_price:
                     print(f"Activating trailing stop (progress={progress:.2f}): Moving SL to entry.")
                     new_sl_order = order_mgr.modify_stop_loss(
-                        symbol=symbol,
-                        sl_order_id=sl_order_id,
-                        new_stop_price=entry_price,
-                        quantity=quantity,
+                        symbol=symbol, sl_order_id=sl_order_id,
+                        new_stop_price=entry_price, quantity=quantity,
                     )
                     if new_sl_order:
                         sl_order_id = new_sl_order['id']
                         current_sl = entry_price
-
                 time.sleep(10)
 
         time.sleep(SCAN_INTERVAL_MINUTES * 60)
