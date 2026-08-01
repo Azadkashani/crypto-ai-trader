@@ -1,22 +1,28 @@
 """
 Crypto AI Bot v5.7
-Market Data Engine (Binance Futures Demo Support)
+Market Data Engine (Binance Futures Demo – Standard CCXT Sandbox)
 """
 
 import ccxt
 import pandas as pd
-from config import EXCHANGE_NAME, TIMEFRAME, LIMIT, TESTNET, API_BASE_URL
+from config import EXCHANGE_NAME, TIMEFRAME, LIMIT, TESTNET, API_KEY, API_SECRET, API_BASE_URL
 
 
 class MarketData:
 
     def __init__(self):
         if EXCHANGE_NAME.lower() == "binance":
+            # ایجاد نمونهٔ ccxt با کلیدهای API
             self.exchange = ccxt.binance({
+                "apiKey": API_KEY,
+                "secret": API_SECRET,
                 "enableRateLimit": True,
                 "options": {"defaultType": "future"}
             })
             if TESTNET:
+                # فعال‌سازی sandbox به روش استاندارد CCXT
+                self.exchange.set_sandbox_mode(True)
+                # تغییر URLها به آدرس دموی فیوچرز
                 self.exchange.urls['api'] = {
                     'public': API_BASE_URL,
                     'private': API_BASE_URL,
@@ -24,21 +30,23 @@ class MarketData:
                     'fapiPrivate': API_BASE_URL,
                 }
             else:
-                # در حالت دمو (TESTNET=False) هم آدرس را تنظیم می‌کنیم
-                # تا از همان fapi.binance.com استفاده کند
-                self.exchange.urls['api'] = {
-                    'public': API_BASE_URL,
-                    'private': API_BASE_URL,
-                    'fapiPublic': API_BASE_URL,
-                    'fapiPrivate': API_BASE_URL,
-                }
+                # در حالت واقعی هیچ تغییری نده
+                pass
         elif EXCHANGE_NAME.lower() == "gate":
             self.exchange = ccxt.gate({
+                "apiKey": API_KEY,
+                "secret": API_SECRET,
                 "enableRateLimit": True,
                 "options": {"defaultType": "swap"}
             })
         else:
             raise Exception("Exchange Not Supported")
+
+        # چاپ آدرس نهایی برای تأیید
+        if TESTNET:
+            print(f"🌐 Binance Demo API Base URL: {self.exchange.urls['api']['fapiPublic']}")
+        else:
+            print(f"🌐 Binance Live API Base URL: {self.exchange.urls['api']['fapiPublic']}")
 
     def get_ohlcv(self, symbol, timeframe=None):
         if timeframe is None:
