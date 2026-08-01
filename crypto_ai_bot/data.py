@@ -1,35 +1,33 @@
 """
 Crypto AI Bot v5.7
-Market Data Engine (Futures – Binance Testnet Support)
+Market Data Engine (Binance Futures Demo Support)
 """
 
 import ccxt
 import pandas as pd
-from config import EXCHANGE_NAME, TIMEFRAME, LIMIT, TESTNET
+from config import EXCHANGE_NAME, TIMEFRAME, LIMIT, TESTNET, API_BASE_URL
 
 
 class MarketData:
 
     def __init__(self):
-        if EXCHANGE_NAME.lower() == "gate":
-            self.exchange = ccxt.gate({
-                "enableRateLimit": True,
-                "options": {"defaultType": "swap"}
-            })
-        elif EXCHANGE_NAME.lower() == "binance":
+        if EXCHANGE_NAME.lower() == "binance":
             self.exchange = ccxt.binance({
                 "enableRateLimit": True,
                 "options": {"defaultType": "future"}
             })
             if TESTNET:
-                # آدرس تست‌نت بایننس فیوچرز
                 self.exchange.urls['api'] = {
-                    'public': 'https://testnet.binancefuture.com/fapi/v1',
-                    'private': 'https://testnet.binancefuture.com/fapi/v1',
-                    'fapiPublic': 'https://testnet.binancefuture.com/fapi/v1',
-                    'fapiPrivate': 'https://testnet.binancefuture.com/fapi/v1',
+                    'public': API_BASE_URL,
+                    'private': API_BASE_URL,
+                    'fapiPublic': API_BASE_URL,
+                    'fapiPrivate': API_BASE_URL,
                 }
-                self.exchange.set_sandbox_mode(True)
+        elif EXCHANGE_NAME.lower() == "gate":
+            self.exchange = ccxt.gate({
+                "enableRateLimit": True,
+                "options": {"defaultType": "swap"}
+            })
         else:
             raise Exception("Exchange Not Supported")
 
