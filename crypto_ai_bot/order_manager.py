@@ -19,13 +19,13 @@ class OrderManager:
             'enableRateLimit': True,
             'options': {'defaultType': 'future'},
         })
-        if TESTNET:
-            exchange.urls['api'] = {
-                'public': API_BASE_URL,
-                'private': API_BASE_URL,
-                'fapiPublic': API_BASE_URL,
-                'fapiPrivate': API_BASE_URL,
-            }
+        # تنظیم آدرس API برای هر دو حالت (دمو و تست‌نت)
+        exchange.urls['api'] = {
+            'public': API_BASE_URL,
+            'private': API_BASE_URL,
+            'fapiPublic': API_BASE_URL,
+            'fapiPrivate': API_BASE_URL,
+        }
         return exchange
 
     def set_leverage(self, symbol, leverage):
@@ -82,7 +82,7 @@ class OrderManager:
             sl_order = self.exchange.create_order(
                 symbol=symbol.replace("/", ""),
                 type='stop_market',
-                side='sell',            # برای لانگ؛ در صورت شرت باید buy باشد
+                side='sell',
                 amount=quantity,
                 params={'stopPrice': new_stop_price}
             )
