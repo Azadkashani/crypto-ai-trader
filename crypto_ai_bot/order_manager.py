@@ -1,6 +1,6 @@
 """
 Crypto AI Bot
-Order Manager – Gate.io Testnet Futures with Dynamic Leverage
+Order Manager – Binance Futures Testnet with Dynamic Leverage
 """
 
 import ccxt
@@ -12,40 +12,27 @@ from risk_manager import RiskManager
 class OrderManager:
     def __init__(self):
         self.exchange = self._init_exchange()
-        self.open_orders = []
 
     def _init_exchange(self):
-        exchange = ccxt.gate({
+        exchange = ccxt.binance({
             'apiKey': API_KEY,
             'secret': API_SECRET,
             'enableRateLimit': True,
-            'options': {'defaultType': 'swap'},
+            'options': {'defaultType': 'future'},
         })
         if TESTNET:
-            # تنظیم مستقیم آدرس‌های تست‌نت در最深 سطح ccxt
             exchange.urls['api'] = {
-                'public': 'https://fx-api-testnet.gateio.ws/api/v4',
-                'private': 'https://fx-api-testnet.gateio.ws/api/v4',
+                'public': 'https://testnet.binancefuture.com/fapi/v1',
+                'private': 'https://testnet.binancefuture.com/fapi/v1',
+                'fapiPublic': 'https://testnet.binancefuture.com/fapi/v1',
+                'fapiPrivate': 'https://testnet.binancefuture.com/fapi/v1',
             }
-            # همچنین futures testnet endpoint
-            exchange.urls['test'] = {
-                'public': 'https://fx-api-testnet.gateio.ws/api/v4',
-                'private': 'https://fx-api-testnet.gateio.ws/api/v4',
-            }
-            # برای fetch_positions و fetch_balance که از privateFuturesGet استفاده می‌کنند
-            exchange.options['gate'] = {
-                'testnet': True,
-            }
-            # بازنویسی مستقیم آدرس futures
-            exchange.urls['api']['futures'] = {
-                'public': 'https://fx-api-testnet.gateio.ws/api/v4',
-                'private': 'https://fx-api-testnet.gateio.ws/api/v4',
-            }
+            exchange.set_sandbox_mode(True)
         return exchange
 
     def set_leverage(self, symbol, leverage):
         try:
-            self.exchange.set_leverage(leverage, symbol)
+            self.exchange.set_leverage(leverage, symbol.replace("/", ""))
         except Exception as e:
             print(f"Error setting leverage: {e}")
 
@@ -54,8 +41,9 @@ class OrderManager:
         print(f"Using dynamic leverage: {dynamic_lev}x")
         self.set_leverage(symbol, dynamic_lev)
 
+        symbol_clean = symbol.replace("/", "")
         order = self.exchange.create_order(
-            symbol=symbol,
+            symbol=symbol_clean,
             type='market',
             side=side,
             amount=quantity,
@@ -65,34 +53,26 @@ class OrderManager:
         if side == 'buy':
             sl_side = 'sell'
             tp_side = 'sell'
-            sl_price = stop_loss
-            tp_price = take_profit
         else:
             sl_side = 'buy'
             tp_side = 'buy'
-            sl_price = stop_loss
-            tp_price = take_profit
 
         sl_order = self.exchange.create_order(
-            symbol=symbol,
+            symbol=symbol_clean,
             type='stop_market',
             side=sl_side,
             amount=quantity,
-            params={'stopPrice': sl_price}
+            params={'stopPrice': stop_loss}
         )
         tp_order = self.exchange.create_order(
-            symbol=symbol,
+            symbol=symbol_clean,
             type='limit',
             side=tp_side,
             amount=quantity,
-            price=tp_price,
+            price=take_profit,
             params={'timeInForce': 'GTC'}
         )
-        return {
-            'entry_order': order,
-            'sl_order': sl_order,
-            'tp_order': tp_order
-        }
+        return {'entry_order': order, 'sl_order': sl_order, 'tp_order': tp_order}
 
     def check_open_positions(self, symbol=None):
         positions = self.exchange.fetch_positions(symbols=[symbol] if symbol else None)
@@ -100,12 +80,11 @@ class OrderManager:
 
     def modify_stop_loss(self, symbol, sl_order_id, new_stop_price, quantity):
         try:
-            self.exchange.cancel_order(sl_order_id, symbol)
-            sl_side = 'sell'
+            self.exchange.cancel_order(sl_order_id, symbol.replace("/", ""))
             sl_order = self.exchange.create_order(
-                symbol=symbol,
+                symbol=symbol.replace("/", ""),
                 type='stop_market',
-                side=sl_side,
+                side='sell',
                 amount=quantity,
                 params={'stopPrice': new_stop_price}
             )
