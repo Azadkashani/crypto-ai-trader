@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Professional Decision Engine (Balanced – Smart Action + Dynamic Readiness + SELL Support + Extended Score Cap)
+Professional Decision Engine (Balanced – Stricter Thresholds)
 """
 
 from weights import WARNING_WEIGHTS
@@ -21,7 +21,7 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence (همانند قبل) ----
+        # ---- Confidence (بدون تغییر) ----
         conf = 30
         if trend == "bullish": conf += 10
         elif trend == "bearish": conf += 10
@@ -47,28 +47,24 @@ class DecisionEngine:
         if risk_event: conf -= 15
         conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness (پویا و متقارن با سقف جدید) ----
+        # ---- Trade Readiness (جریمه‌های افزایش‌یافته) ----
         readiness = 20
 
-        # روند
         if trend == "bullish" or trend == "bearish":
             readiness += 15
         else:
             readiness -= 15
 
-        # قدرت روند
         if strength == "Very Strong": readiness += 10
         elif strength == "Strong": readiness += 7
         elif strength == "Medium": readiness += 3
         else: readiness -= 10
 
-        # هم‌جهتی MTF
         if (trend == "bullish" and "Bullish" in mtf_signal) or (trend == "bearish" and "Bearish" in mtf_signal):
             readiness += 10
         elif (trend == "bullish" and "Bearish" in mtf_signal) or (trend == "bearish" and "Bullish" in mtf_signal):
             readiness -= 10
 
-        # BOS
         if last_bos:
             if (trend == "bullish" and last_bos["type"] == "bullish") or (trend == "bearish" and last_bos["type"] == "bearish"):
                 readiness += 10
@@ -77,19 +73,17 @@ class DecisionEngine:
         else:
             readiness -= 10
 
-        # CHoCH مخالف
         if opposing_choch:
             readiness -= 20
 
-        # حجم
+        # حجم (جریمه‌های سنگین‌تر)
         if vol_z > 0.5:
             readiness += 10
         elif vol_z < -0.5:
-            readiness -= 15
+            readiness -= 20   # قبلاً -15
         else:
-            readiness -= 5
+            readiness -= 10   # قبلاً -5
 
-        # شکست
         if breakout:
             readiness += 10
 
@@ -117,12 +111,22 @@ class DecisionEngine:
         if risk_event:
             readiness -= 30
 
-        # سهم امتیاز تکنیکال (سقف جدید ۱۵)
-        readiness += min(score // 5, 15)  # <-- تغییر اصلی
+        # سهم امتیاز تکنیکال (سقف ۱۵)
+        readiness += min(score // 5, 15)
+
+        # جریمه‌های جدید برای هشدارهای رایج
+        if "Premium Zone" in warnings or "Premium Zone" in str(warnings):
+            readiness -= 5
+        if "OI Long Unwinding" in warnings or "OI Short Build Up" in warnings:
+            readiness -= 8
+        if "Strong Resistance" in warnings:
+            readiness -= 10
+        if "Bearish Candlestick" in warnings:
+            readiness -= 5
 
         readiness = max(0, min(100, readiness))
 
-        # ---- Action اصلی ----
+        # ---- Action اصلی (آستانه‌های بالاتر) ----
         critical_rejections = []
         if risk_event:
             critical_rejections.append("Macro Risk Active")
@@ -135,25 +139,31 @@ class DecisionEngine:
             action = "WATCH"
             decision_reason = "Blocked by: " + ", ".join(critical_rejections)
         elif trend == "bullish":
-            if readiness >= 70 and conf >= 65:
+            if readiness >= 85 and conf >= 80:
                 action = "STRONG BUY"
-                decision_reason = "All conditions aligned strongly for long."
-            elif readiness >= 55 and conf >= 50:
+                decision_reason = "Exceptional long setup."
+            elif readiness >= 70 and conf >= 60:
                 action = "BUY"
-                decision_reason = "Good setup for long."
-            else:
+                decision_reason = "Good long setup."
+            elif readiness >= 55:
                 action = "WATCH"
-                decision_reason = "Waiting for stronger long signal."
+                decision_reason = "Long signal needs improvement."
+            else:
+                action = "NO TRADE"
+                decision_reason = "Insufficient long conditions."
         elif trend == "bearish":
-            if readiness >= 70 and conf >= 65:
+            if readiness >= 85 and conf >= 80:
                 action = "STRONG SELL"
-                decision_reason = "All conditions aligned strongly for short."
-            elif readiness >= 55 and conf >= 50:
+                decision_reason = "Exceptional short setup."
+            elif readiness >= 70 and conf >= 60:
                 action = "SELL"
-                decision_reason = "Good setup for short."
-            else:
+                decision_reason = "Good short setup."
+            elif readiness >= 55:
                 action = "WATCH"
-                decision_reason = "Waiting for stronger short signal."
+                decision_reason = "Short signal needs improvement."
+            else:
+                action = "NO TRADE"
+                decision_reason = "Insufficient short conditions."
         else:
             action = "WATCH"
             decision_reason = "Trend not clearly directional."
@@ -165,7 +175,7 @@ class DecisionEngine:
             "Missing": [],
             "Risk Level": "Medium"
         }
-        print(f"[DecisionEngine v2.2] {trend} | Readiness={readiness} | Conf={conf}")
+        print(f"[DecisionEngine v3.0] {trend} | Readiness={readiness} | Conf={conf}")
         return {
             "action": action,
             "confidence": conf,
