@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Data Engine (Gate.io Futures – Strict Perpetual Filter + Extra Clean)
+Market Data Engine (Gate.io Futures – Ultra-Strict Perpetual Swap Filter)
 """
 
 import ccxt
@@ -14,7 +14,7 @@ class MarketData:
         if EXCHANGE_NAME.lower() == "gate":
             self.exchange = ccxt.gate({
                 "enableRateLimit": True,
-                "options": {"defaultType": "swap"}
+                "options": {"defaultType": "swap"}   # Perpetual Futures
             })
         else:
             raise Exception("Exchange Not Supported")
@@ -41,15 +41,18 @@ class MarketData:
         return data
 
     def get_usdt_symbols(self):
+        """
+        دریافت فقط قراردادهای واقعی فیوچرز دائمی (Perpetual Swap) USDT از Gate.io.
+        """
         print("Loading futures markets...")
         markets = self.exchange.load_markets()
         usdt_futures = []
 
-        # الگوهای ممنوعهٔ گسترده‌تر
+        # الگوهای ممنوعه (هر نمادی که شامل این عبارات باشد حذف می‌شود)
         EXCLUDE_PATTERNS = [
-            # ربات‌ها، شاخص‌ها، توکن‌های مصنوعی
+            # ربات‌ها، استراتژی‌ها، شاخص‌ها
             "BOT", "GRID", "STRATEGY", "API", "SYNTH", "INDEX",
-            "DEX", "ALPHA",  # ← حذف DEX/BOT/Alpha
+            "DEX", "ALPHA", "QUAN",
             # تست و دمو
             "TEST", "DEMO", "INTERNAL",
             # وضعیت غیرفعال
@@ -58,7 +61,7 @@ class MarketData:
             "BEAR", "BULL", "UP", "DOWN", "ETF",
             # سهام توکنیزه‌شده
             "TOKENIZED", "STOCK", "EQUITY", "SHARE",
-            # لیست صریح سهام و نمادهای غیرفیوچرز
+            # لیست صریح سهام معروف و نمادهای غیرفیوچرزی
             "MU/USDT", "SOXL/USDT", "TSLA/USDT", "AAPL/USDT",
             "GOOGL/USDT", "AMZN/USDT", "MSFT/USDT", "NFLX/USDT",
             "NVDA/USDT", "META/USDT", "BABA/USDT", "SPY/USDT",
@@ -67,28 +70,32 @@ class MarketData:
             "GME/USDT", "AMC/USDT", "COIN/USDT", "SNAP/USDT",
             "TWTR/USDT", "UBER/USDT", "LYFT/USDT", "ZM/USDT",
             "CXMT/USDT", "SKHYNIX/USDT", "SNDK/USDT",
-            # موارد جدید که گزارش شده‌اند
-            "QQQX/USDT",          # ← حذف مستقیم
+            "QQQX/USDT", "DRAM/USDT",  # ← مواردی که قبلاً گزارش شده‌اند
         ]
 
         for symbol, market in markets.items():
-            # فقط فیوچرز دائمی خطی USDT
-            if not (market.get("active", False) and
-                    market.get("swap", False) and
-                    market.get("linear", False) and
-                    market.get("quote") == "USDT"):
+            # فقط Perpetual Swap (دائمی)
+            if market.get("type") != "swap":
                 continue
 
-            # بررسی وضعیت معاملاتی
+            # فقط Linear USDT
+            if not (market.get("linear", False) and market.get("quote") == "USDT"):
+                continue
+
+            # فقط فعال
+            if not market.get("active", False):
+                continue
+
+            # بررسی وضعیت معاملاتی از info (مخصوص Gate.io)
             info = market.get("info", {})
             if info:
                 trade_status = info.get("trade_status", "").lower()
                 if trade_status not in ("tradable", ""):
                     continue
 
-            # حذف بر اساس الگوها
+            # حذف بر اساس الگوهای ممنوعه
             name_upper = symbol.upper()
-            if any(pattern in name_upper for pattern in EXCLUDE_PATTERNS):
+            if any(pattern.upper() in name_upper for pattern in EXCLUDE_PATTERNS):
                 continue
 
             usdt_futures.append(symbol)
@@ -97,7 +104,7 @@ class MarketData:
             print("No valid futures contracts found.")
             return []
 
-        print(f"Total Futures Contracts: {len(usdt_futures)}")
+        print(f"Total Valid Perpetual Swaps: {len(usdt_futures)}")
 
         # دریافت حجم ۲۴ ساعته
         try:
@@ -114,7 +121,12 @@ class MarketData:
                 symbol_volumes.append((sym, volume))
 
         symbol_volumes.sort(key=lambda x: (-x[1], x[0]))
-        print(f"After Volume Filter (≥{MIN_24H_VOLUME} USDT): {len(symbol_volumes)} contracts")
-        print("Top 50 Selected\n")
 
-        return [s for s, v in symbol_volumes[:50]]
+        print(f"After Volume Filter (≥{MIN_24H_VOLUME} USDT): {len(symbol_volumes)} contracts")
+
+        top_symbols = [s for s, v in symbol_volumes[:50]]
+        print("Top 50 Selected:")
+        for i, sym in enumerate(top_symbols, 1):
+            print(f"  {i}. {sym}")
+
+        return top_symbols
