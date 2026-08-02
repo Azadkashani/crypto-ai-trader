@@ -74,10 +74,8 @@ class MarketScanner:
             for news in analyzed_news:
                 news["currencies"] = NewsMapping.get_related_symbols(news["title"])
 
-        # === Sentiment پایه ===
         sentiment_data_base = MarketSentiment.fetch_sentiment(self.data.exchange) if ENABLE_SENTIMENT_ENGINE else None
 
-        # === تقویم اقتصادی و Macro Risk ===
         calendar_events = EconomicCalendar.fetch_events() if ENABLE_ECONOMIC_CALENDAR else []
         macro_risk_active, macro_event = RiskEvents.is_high_impact_near(calendar_events)
 
@@ -113,7 +111,6 @@ class MarketScanner:
                     sentiment_score_val = scores["sentiment_score"]
                     relevant_news = related_news
 
-                # === Scoring و Decision ===
                 analysis = ScoringEngine.calculate(
                     df, mtf_signal,
                     market_structure=market_structure,
@@ -150,7 +147,6 @@ class MarketScanner:
                 atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
                 support = round(df["low"].tail(50).min(), 4)
                 resistance = round(df["high"].tail(50).max(), 4)
-                # قیمت ورود دقیقاً همان close است (هیچ رَندی انجام نشود)
                 entry = float(last["close"])
 
                 if "SELL" in action:
@@ -162,10 +158,15 @@ class MarketScanner:
                     take_profit = entry + (atr_val * 3)
                     side = "buy"
 
+                # اهرم پویا
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
 
+                # Input % (درصد سرمایهٔ پیشنهادی برای ریسک ۱٪)
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
-                input_pct = round((1.0 / (sl_pct * 100)) * 100, 2) if sl_pct > 0 else 100.0
+                if sl_pct < 0.01:
+                    input_pct = 100.0
+                else:
+                    input_pct = round((1.0 / (sl_pct * 100)) * 100, 2)
 
                 results.append({
                     "Symbol": symbol,
