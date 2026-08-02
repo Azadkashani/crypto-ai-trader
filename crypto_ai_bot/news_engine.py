@@ -1,6 +1,6 @@
 """
-Crypto AI Bot
-News Engine – using feedparser for reliable RSS parsing
+Crypto AI Bot v1.1
+News Engine – RSS parsing with symbol extraction and BTC multiplier
 """
 
 import feedparser
@@ -20,21 +20,14 @@ class NewsEngine:
                 for entry in entries:
                     title = entry.get("title", "")
                     link = entry.get("link", "")
-                    # time parsing with feedparser
                     pub_dt = None
                     if "published_parsed" in entry:
                         try:
                             pub_dt = datetime(*entry.published_parsed[:6])
                         except:
                             pass
-                    if not pub_dt and "updated_parsed" in entry:
-                        try:
-                            pub_dt = datetime(*entry.updated_parsed[:6])
-                        except:
-                            pass
-                    if pub_dt:
-                        if datetime.utcnow() - pub_dt > timedelta(hours=NEWS_MAX_AGE_HOURS):
-                            continue
+                    if pub_dt and datetime.utcnow() - pub_dt > timedelta(hours=NEWS_MAX_AGE_HOURS):
+                        continue
                     all_news.append({
                         "title": title,
                         "link": link,
