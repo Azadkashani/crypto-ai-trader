@@ -1,20 +1,18 @@
 """
-Crypto AI Bot v5.7
-Timeframe Manager (Intraday)
+Crypto AI Bot v1.1
+Timeframe Manager (Higher TFs for MTF confirmation)
 """
 
-# تایم‌فریم‌های مورد استفاده (5m, 15m, 1h)
+# تایم‌فریم‌های بالاتر از تایم‌فریم اصلی (1h)
 TIMEFRAMES = [
-    "5m",
-    "15m",
-    "1h"
+    "4h",
+    "1d"
 ]
 
 # وزن هر تایم‌فریم (تایم‌فریم بالاتر وزن بیشتری دارد)
 TIMEFRAME_WEIGHT = {
-    "5m": 0.20,
-    "15m": 0.30,
-    "1h": 0.50
+    "4h": 0.30,
+    "1d": 0.70
 }
 
 
