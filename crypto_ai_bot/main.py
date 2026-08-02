@@ -1,6 +1,6 @@
 """
-Crypto AI Bot v5.7
-Signal-Only Mode – دریافت از Gate.io و نمایش سیگنال
+Crypto AI Bot v1.0
+Signal-Only Mode – Gate.io Futures
 """
 
 import time
