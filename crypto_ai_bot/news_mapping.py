@@ -1,11 +1,11 @@
 """
-Crypto AI Bot
-News to Symbol Mapping
+Crypto AI Bot v1.1
+News to Symbol Mapping with BTC multiplier
 """
 
 SYMBOL_KEYWORDS = {
-    "BTC": ["bitcoin", "btc", "satoshi", "xbt"],
-    "ETH": ["ethereum", "eth", "vitalik", "ether"],
+    "BTC": ["bitcoin", "btc", "xbt"],
+    "ETH": ["ethereum", "eth", "ether"],
     "XRP": ["ripple", "xrp"],
     "SOL": ["solana", "sol"],
     "ADA": ["cardano", "ada"],
@@ -15,7 +15,7 @@ SYMBOL_KEYWORDS = {
     "LTC": ["litecoin", "ltc"],
     "AAVE": ["aave"],
     "SHIB": ["shiba", "shib"],
-    # ... (می‌توان گسترش داد)
+    # سایر نمادها در صورت نیاز اضافه شوند
 }
 
 class NewsMapping:
@@ -26,7 +26,8 @@ class NewsMapping:
         for symbol, keywords in SYMBOL_KEYWORDS.items():
             if any(kw in title_lower for kw in keywords):
                 related.append(symbol)
-        # اگر هیچ ارز خاصی ذکر نشد، به کل بازار مربوط است
         if not related:
             related.append("MARKET")
+        # اگر BTC در میان نمادها بود و نمادهای دیگری هم وجود دارند،
+        # تأثیر BTC روی آلت‌کوین‌ها با ضریب 0.5 اعمال خواهد شد (در NewsScoring)
         return related
