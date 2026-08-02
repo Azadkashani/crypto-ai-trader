@@ -1,5 +1,5 @@
 """
-Crypto AI Bot
+Crypto AI Bot v1.1
 Risk Manager – Position Sizing & Dynamic Leverage (1% Risk Rule)
 """
 
@@ -37,10 +37,6 @@ class RiskManager:
 
     @staticmethod
     def suggest_leverage(entry, stop_loss, side, max_leverage=MAX_LEVERAGE):
-        """
-        پیشنهاد اهرم بر اساس ریسک ۱٪ و درصد حد ضرر.
-        leverage = RISK_PER_TRADE / (stop_loss_pct)
-        """
         if entry <= 0:
             return 1
         if side in ("buy", "long"):
