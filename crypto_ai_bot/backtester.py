@@ -1,6 +1,6 @@
 """
-Crypto AI Bot
-Backtester Engine – Full version with CSV support, Mock, API (MEXC, Bybit, etc.), and internal MTF
+Crypto AI Bot v1.1
+Backtester Engine – Full version with CSV support, Mock, API, yfinance, Advanced Analytics, fixed MTF
 """
 
 import pandas as pd
@@ -18,6 +18,10 @@ from equity_curve import EquityCurve
 from performance import Performance
 from backtest_report import BacktestReport
 from mtf_engine import MTFEngine
+from timeframe import TIMEFRAMES, TIMEFRAME_WEIGHT
+
+# Advanced Analytics
+from advanced_analytics import AdvancedAnalytics
 
 
 class CausalMarketStructure:
@@ -66,7 +70,7 @@ class Backtester:
                 self.exchange = ccxt.kucoinfutures({'enableRateLimit': True})
             elif exchange_name == 'gate':
                 self.exchange = ccxt.gate({'enableRateLimit': True})
-            else:  # binance
+            else:
                 self.exchange = ccxt.binance({
                     'enableRateLimit': True,
                     'options': {'defaultType': 'future'}
@@ -80,6 +84,9 @@ class Backtester:
         self.indicators = {}
         self.market_structures = {}
         self.advanced_analytics = {}
+
+        # نمونه‌ی AdvancedAnalytics برای بک‌تست (با exchange ممکن است خطا دهد، با try مدیریت می‌شود)
+        self.advanced = AdvancedAnalytics(data_engine=None)  # در بک‌تست exchange نداریم
 
     def _generate_mock_data(self, sym):
         np.random.seed(42)
@@ -198,50 +205,48 @@ class Backtester:
             except Exception as e:
                 print(f"yfinance failed for {sym}: {e}")
 
-    def _calculate_mtf_signal(self, df):
+    def _calculate_mtf_signal(self, df_hourly):
         """
-        محاسبه سیگنال مولتی‌تایم‌فریم از داده یک‌ساعته با ساختن تایم‌فریم ۴ ساعته.
-        وزن‌ها: 1h=0.4, 4h=0.6 (تطبیق‌یافته از 15m/1h/4h اصلی).
+        محاسبه سیگنال MTF با استفاده از تایم‌فریم‌های بالاتر (4h, 1d) و وزن‌های timeframe.py
         """
-        # تایم‌فریم ۴ ساعته از روی ۱ ساعته
-        df_4h = df.resample('4h', on='time').agg({
+        results = {}
+        # 4h
+        df_4h = df_hourly.resample('4h', on='time').agg({
             'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
         }).dropna()
-        if len(df_4h) < 20:
-            return "Neutral"
-        # محاسبه اندیکاتورها برای ۴ ساعته
-        df_4h_ind = IndicatorEngine.calculate(df_4h.copy())
-        from trend import TrendEngine
-        trend_1h = TrendEngine.detect(df)      # روی داده اصلی ۱ ساعته
-        trend_4h = TrendEngine.detect(df_4h_ind)
+        if len(df_4h) >= 20:
+            df_4h_ind = IndicatorEngine.calculate(df_4h.copy())
+            from trend import TrendEngine
+            trend_4h = TrendEngine.detect(df_4h_ind)
+        else:
+            trend_4h = "Sideways"
+        results["4h"] = trend_4h
 
-        # شبیه‌سازی MTFEngine با وزن‌های ساده‌شده
-        results = {"1h": trend_1h, "4h": trend_4h}
-        weights = {"1h": 0.4, "4h": 0.6}
-        bullish = 0.0
-        bearish = 0.0
-        for tf, trend in results.items():
-            w = weights.get(tf, 0)
-            if trend == "Bullish":
-                bullish += w
-            elif trend == "Bearish":
-                bearish += w
-        if bullish >= 0.7:
-            return "Strong Bullish"
-        elif bearish >= 0.7:
-            return "Strong Bearish"
-        elif bullish > bearish:
-            return "Bullish"
-        elif bearish > bullish:
-            return "Bearish"
-        return "Neutral"
+        # 1d
+        df_1d = df_hourly.resample('1d', on='time').agg({
+            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+        }).dropna()
+        if len(df_1d) >= 20:
+            df_1d_ind = IndicatorEngine.calculate(df_1d.copy())
+            trend_1d = TrendEngine.detect(df_1d_ind)
+        else:
+            trend_1d = "Sideways"
+        results["1d"] = trend_1d
+
+        # محاسبه با MTFEngine (استفاده از وزن‌های timeframe.py)
+        return MTFEngine.analyze(results)
 
     def compute_analysis(self, sym):
         if sym not in self.indicators:
             return
         df = self.indicators[sym]
         self.market_structures[sym] = CausalMarketStructure.analyze(df)
-        self.advanced_analytics[sym] = None
+        # Advanced analytics با try/except برای جلوگیری از کرش
+        try:
+            self.advanced_analytics[sym] = self.advanced.analyze(df, self.market_structures[sym], sym)
+        except Exception as e:
+            print(f"Advanced analytics error for {sym}: {e}")
+            self.advanced_analytics[sym] = None
 
     def run(self):
         print("Loading historical data...")
@@ -281,15 +286,18 @@ class Backtester:
                     from trend import TrendEngine
                     strength = TrendEngine.strength(self.indicators[sym])
 
-                    # محاسبه MTF از داده اصلی (۱ ساعته)
+                    # محاسبه MTF از داده اصلی (۱ ساعته) با استفاده از تایم‌فریم‌های بالاتر
                     mtf_signal = self._calculate_mtf_signal(self.indicators[sym])
+
+                    # Advanced analytics (پیش‌محاسبه شده)
+                    adv_data = self.advanced_analytics.get(sym)
 
                     analysis = ScoringEngine.calculate(
                         self.indicators[sym],
                         mtf_signal,
                         market_structure=ms,
                         strength=strength,
-                        advanced_data=None,
+                        advanced_data=adv_data,
                     )
 
                     decision = DecisionEngine.evaluate(
@@ -297,7 +305,7 @@ class Backtester:
                         ms,
                         mtf_signal,
                         strength,
-                        None,
+                        adv_data,
                         analysis["score"],
                         analysis["breakout"],
                         analysis["reasons"],
@@ -322,6 +330,8 @@ class Backtester:
                             quantity = RiskManager.calculate_position_size(
                                 entry_price, sl, self.portfolio.capital, side
                             )
+                            if quantity <= 0:
+                                continue
 
                             self.trade_engine.open_trade(
                                 symbol=sym,
