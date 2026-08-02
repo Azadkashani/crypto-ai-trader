@@ -1,27 +1,21 @@
 """
 Crypto AI Bot v1.0
-Configuration File (Futures – Binance Demo)
+Configuration File (Signal-Only – Gate.io)
 """
 
 # ==========================
 # Exchange Settings
 # ==========================
-EXCHANGE_NAME = "binance"
-API_KEY = "J8mCG1sDkitIVEVVVFYZdGpHna4xDc6G3Zdk7VdTFsCdS19rTLHhKzz2IbqOHkLH"
-API_SECRET = "ZHocE0JzoZIU8PbMup9Rqgx0Urg0ui56We5shCyrrr0o7fGRJW13bd2wz36PMqjf"
-TESTNET = True
-API_BASE_URL = "https://demo-api.binance.com/fapi/v1"
+EXCHANGE_NAME = "gate"
+API_KEY = ""          # برای دریافت داده‌های عمومی نیازی به کلید نیست
+API_SECRET = ""       # (در صورت نیاز به داده‌های خصوصی، کلیدهای خود را وارد کنید)
+TESTNET = False       # از بازار واقعی Gate.io داده می‌گیریم
+# API_BASE_URL برای Gate.io نیاز نیست (ccxt خودش آدرس‌ها را می‌داند)
 
 # ==========================
 # Trading Settings
 # ==========================
-SYMBOLS = [
-    "BTC/USDT",
-    "ETH/USDT",
-    "XRP/USDT",
-    "SOL/USDT",
-    "DOGE/USDT"
-]
+SYMBOLS = []                # خالی = دریافت از صرافی
 USE_ALL_MARKETS = True
 MAX_SYMBOLS = 50
 TOP_RESULTS = 5
@@ -45,7 +39,7 @@ BUY_SCORE = 75
 WATCH_SCORE = 50
 
 # ==========================
-# Risk Management (Futures)
+# Risk Management (فقط برای نمایش)
 # ==========================
 RISK_PER_TRADE = 0.01
 MIN_RISK_REWARD = 2.0
