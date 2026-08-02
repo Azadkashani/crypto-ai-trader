@@ -1,6 +1,6 @@
 """
-Crypto AI Bot v5.7
-Advanced Report Engine (with Entry, SL, TP, Leverage, R/R, and percentages)
+Crypto AI Bot v1.0
+Advanced Report Engine (Entry, SL%, TP%, Leverage, Input%)
 """
 
 import pandas as pd
@@ -25,7 +25,8 @@ class ReportEngine:
         columns = [
             "Symbol", "Price", "Trend", "Strength", "MTF_Signal",
             "Confidence", "RSI", "News Score", "Sentiment Score",
-            "Score", "Action", "Entry Quality", "Trade Readiness", "Leverage"
+            "Score", "Action", "Entry Quality", "Trade Readiness",
+            "Leverage", "InputPct"
         ]
         cols = [c for c in columns if c in table.columns]
         print(table[cols].to_string(index=False))
@@ -39,7 +40,6 @@ class ReportEngine:
             sl = item.get("StopLoss", 0)
             tp = item.get("TakeProfit", 0)
 
-            # محاسبه درصد حد ضرر و سود نسبت به قیمت ورود
             sl_pct = ((sl - entry) / entry) * 100 if entry else 0
             tp_pct = ((tp - entry) / entry) * 100 if entry else 0
 
@@ -53,6 +53,7 @@ class ReportEngine:
             print(f"Stop Loss: {sl} ({sl_pct:+.2f}%)")
             print(f"Take Profit: {tp} ({tp_pct:+.2f}%)")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
+            print(f"Input: {item.get('InputPct', 'N/A')}%")
             print(f"Risk/Reward: 2.0")
             print(f"Market Bias: {item['Summary'].get('Market Bias', '')}")
             print(f"Status: {item['Summary'].get('Current Status', '')}")
@@ -90,6 +91,7 @@ class ReportEngine:
             print(f"Stop Loss: {sl} ({sl_pct:+.2f}%)")
             print(f"Take Profit: {tp} ({tp_pct:+.2f}%)")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
+            print(f"Input: {item.get('InputPct', 'N/A')}%")
             print(f"Risk/Reward: 2.0")
             if "News Score" in item:
                 print(f"News Score: {item['News Score']}")
