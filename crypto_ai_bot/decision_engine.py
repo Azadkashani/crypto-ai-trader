@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Professional Decision Engine (Balanced – Smart Action + Dynamic Readiness + SELL Support)
+Professional Decision Engine (Balanced – Smart Action + Dynamic Readiness + SELL Support + Extended Score Cap)
 """
 
 from weights import WARNING_WEIGHTS
@@ -21,10 +21,10 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence (مانند قبل) ----
+        # ---- Confidence (همانند قبل) ----
         conf = 30
         if trend == "bullish": conf += 10
-        elif trend == "bearish": conf += 10      # برای فروش هم روند قوی مهم است
+        elif trend == "bearish": conf += 10
         if strength == "Very Strong": conf += 20
         elif strength == "Strong": conf += 15
         elif strength == "Medium": conf += 5
@@ -47,7 +47,7 @@ class DecisionEngine:
         if risk_event: conf -= 15
         conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness (پویا و متقارن برای خرید/فروش) ----
+        # ---- Trade Readiness (پویا و متقارن با سقف جدید) ----
         readiness = 20
 
         # روند
@@ -117,8 +117,8 @@ class DecisionEngine:
         if risk_event:
             readiness -= 30
 
-        # سهم امتیاز تکنیکال
-        readiness += min(score // 5, 10)
+        # سهم امتیاز تکنیکال (سقف جدید ۱۵)
+        readiness += min(score // 5, 15)  # <-- تغییر اصلی
 
         readiness = max(0, min(100, readiness))
 
@@ -165,7 +165,7 @@ class DecisionEngine:
             "Missing": [],
             "Risk Level": "Medium"
         }
-        print(f"[DecisionEngine v2.1] {trend} | Readiness={readiness} | Conf={conf}")
+        print(f"[DecisionEngine v2.2] {trend} | Readiness={readiness} | Conf={conf}")
         return {
             "action": action,
             "confidence": conf,
