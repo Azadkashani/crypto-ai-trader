@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-News Engine – RSS parsing with symbol extraction and BTC multiplier
+News Engine – RSS parsing with feedparser
 """
 
 import feedparser
