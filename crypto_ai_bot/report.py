@@ -1,9 +1,19 @@
 """
 Crypto AI Bot v1.1
-Advanced Report Engine (Entry, SL%, TP%, Leverage, Input%)
+Advanced Report Engine (Smart Price Display, Macro News, Sentiment Drivers)
 """
 
 import pandas as pd
+
+
+def smart_price(price):
+    """نمایش قیمت‌های خیلی کوچک با ۸ رقم اعشار"""
+    if price is None:
+        return "N/A"
+    if price < 0.01:
+        return f"{price:.8f}"
+    else:
+        return f"{price:.4f}"
 
 
 class ReportEngine:
@@ -49,12 +59,18 @@ class ReportEngine:
             print(f"Entry Quality: {item.get('Entry Quality', 'N/A')}  |  Risk Level: {item.get('Summary', {}).get('Risk Level', 'N/A')}")
             if "News Score" in item:
                 print(f"News Score: {item['News Score']}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
-            print(f"Entry: {entry}")
-            print(f"Stop Loss: {sl} ({sl_pct:+.2f}%)")
-            print(f"Take Profit: {tp} ({tp_pct:+.2f}%)")
+            print(f"Entry: {smart_price(entry)}")
+            print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
+            print(f"Take Profit: {smart_price(tp)} ({tp_pct:+.2f}%)")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
             print(f"Input: {item.get('InputPct', 'N/A')}%")
             print(f"Risk/Reward: 2.0")
+
+            # Macro News
+            macro = item.get("Macro News")
+            if macro:
+                print(f"Macro News: {macro.get('bias', 'Neutral')} (Impact: {macro.get('impact', 0)})")
+
             print(f"Market Bias: {item['Summary'].get('Market Bias', '')}")
             print(f"Status: {item['Summary'].get('Current Status', '')}")
             print(f"Decision Reason: {item['Summary'].get('Decision Reason', '')}")
@@ -75,7 +91,6 @@ class ReportEngine:
                     print(f"  {w}")
             print("")
 
-        # جزئیات کامل برای همه فرصت‌ها
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -87,15 +102,18 @@ class ReportEngine:
             print(f"\nSymbol: {item['Symbol']}")
             print(f"Action: {item['Action']}")
             print(f"Trade Readiness: {item['Trade Readiness']}")
-            print(f"Entry: {entry}")
-            print(f"Stop Loss: {sl} ({sl_pct:+.2f}%)")
-            print(f"Take Profit: {tp} ({tp_pct:+.2f}%)")
+            print(f"Entry: {smart_price(entry)}")
+            print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
+            print(f"Take Profit: {smart_price(tp)} ({tp_pct:+.2f}%)")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
             print(f"Input: {item.get('InputPct', 'N/A')}%")
             print(f"Risk/Reward: 2.0")
             if "News Score" in item:
                 print(f"News Score: {item['News Score']}")
                 print(f"Sentiment Score: {item['Sentiment Score']}")
+            macro = item.get("Macro News")
+            if macro:
+                print(f"Macro News: {macro.get('bias', 'Neutral')} (Impact: {macro.get('impact', 0)})")
             print(f"Reasons: {item.get('Reasons', '')}")
             print(f"Warnings: {item.get('Warnings', '')}")
             print("-" * 75)
