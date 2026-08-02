@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Real News/Sentiment + Advanced Analytics)
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Dual Targets)
 """
 
 from market_structure import MarketStructure
@@ -40,7 +40,7 @@ class MarketScanner:
 
     def __init__(self):
         self.data = MarketData()
-        self.advanced = AdvancedAnalytics(data_engine=self.data)  # فعال‌سازی واقعی
+        self.advanced = AdvancedAnalytics(data_engine=self.data)
 
     def get_symbols(self):
         if USE_ALL_MARKETS:
@@ -154,17 +154,39 @@ class MarketScanner:
                 resistance = round(df["high"].tail(50).max(), 4)
                 entry = float(last["close"])
 
+                # ----- محاسبه SL و دو TP -----
                 if "SELL" in action:
                     stop_loss = entry + (atr_val * 1.5)
-                    take_profit = entry - (atr_val * 3)
                     side = "sell"
                 else:
                     stop_loss = entry - (atr_val * 1.5)
-                    take_profit = entry + (atr_val * 3)
                     side = "buy"
 
-                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
+                # TP1 (R:R=2)
+                if side == "sell":
+                    tp1 = entry - (atr_val * 3)
+                else:
+                    tp1 = entry + (atr_val * 3)
 
+                # TP2 (R:R≥3.33): 5×ATR یا مقاومت 50 کندله، هرکدام دورتر
+                resistance_50 = df["high"].tail(50).max()
+                support_50 = df["low"].tail(50).min()
+                if side == "sell":
+                    tp2_candidate = entry - (atr_val * 5)
+                    # برای فروش، از حمایت ۵۰ کندله استفاده می‌کنیم
+                    tp2 = min(tp2_candidate, support_50) if support_50 < tp2_candidate else tp2_candidate
+                else:
+                    tp2_candidate = entry + (atr_val * 5)
+                    tp2 = max(tp2_candidate, resistance_50) if resistance_50 > tp2_candidate else tp2_candidate
+
+                # اطمینان از اینکه TP2 در جهت سود بدتر از TP1 نباشد
+                if side == "buy":
+                    tp2 = max(tp2, tp1)
+                else:
+                    tp2 = min(tp2, tp1)
+
+                # اهرم پویا و Input% (فقط بر اساس SL)
+                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
                 if sl_pct < 0.01:
                     input_pct = 100.0
@@ -188,7 +210,8 @@ class MarketScanner:
                     "Resistance": resistance,
                     "Entry": entry,
                     "StopLoss": stop_loss,
-                    "TakeProfit": take_profit,
+                    "TP1": tp1,
+                    "TP2": tp2,
                     "Leverage": suggested_leverage,
                     "InputPct": input_pct,
                     "Volume Breakout": breakout,
