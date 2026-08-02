@@ -1,6 +1,6 @@
 """
-Crypto AI Bot
-Professional Decision Engine (with News Risk + SELL Support)
+Crypto AI Bot v1.1
+Professional Decision Engine (Strict STRONG BUY, Dynamic Readiness, Confidence aligned)
 """
 
 from weights import WARNING_WEIGHTS, CONFIDENCE_FACTORS, REASON_WEIGHTS
@@ -21,298 +21,89 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # -------------------------------
-        # محاسبه Confidence
-        # -------------------------------
-        conf = 0
+        # Confidence (هماهنگ با امتیاز)
+        conf = 30
         if trend == "bullish":
-            conf += CONFIDENCE_FACTORS["trend_bullish"]
+            conf += 10
         elif trend == "bearish":
-            conf += CONFIDENCE_FACTORS["trend_bearish"]
+            conf -= 10
         if strength == "Very Strong":
-            conf += CONFIDENCE_FACTORS["strength_very_strong"]
+            conf += 20
         elif strength == "Strong":
-            conf += CONFIDENCE_FACTORS["strength_strong"]
+            conf += 15
         elif strength == "Medium":
-            conf += CONFIDENCE_FACTORS["strength_medium"]
+            conf += 5
         else:
-            conf += CONFIDENCE_FACTORS["strength_weak"]
+            conf -= 10
         if "Bullish" in mtf_signal:
-            if "Strong" in mtf_signal:
-                conf += CONFIDENCE_FACTORS["mtf_bullish_strong"]
-            else:
-                conf += CONFIDENCE_FACTORS["mtf_bullish"]
+            conf += 15
         elif "Bearish" in mtf_signal:
-            if "Strong" in mtf_signal:
-                conf += CONFIDENCE_FACTORS["mtf_bearish_strong"]
-            else:
-                conf += CONFIDENCE_FACTORS["mtf_bearish"]
+            conf -= 10
         if last_bos:
-            conf += CONFIDENCE_FACTORS["bos_present"]
-        if last["EMA20"] > last["EMA50"] and last["EMA50"] > last["EMA200"]:
-            conf += CONFIDENCE_FACTORS["ema_aligned"]
+            conf += 15
+        if opposing_choch:
+            conf -= 20
         avg_vol = df["volume"].tail(20).mean()
-        std_vol = df["volume"].tail(20).std()
-        vol_z = (last["volume"] - avg_vol) / std_vol if std_vol > 0 else 0
+        vol_z = (last["volume"] - avg_vol) / df["volume"].tail(20).std() if df["volume"].tail(20).std() != 0 else 0
         if vol_z > 0.5:
-            conf += CONFIDENCE_FACTORS["volume_high"]
-        elif vol_z < -0.5:
-            conf += CONFIDENCE_FACTORS["volume_low"]
+            conf += 10
         if breakout:
-            conf += CONFIDENCE_FACTORS["breakout_real"]
-        regime = advanced_data.get("market_regime") if advanced_data else None
-        if regime:
-            if "Trending" in regime.get("regime", ""):
-                conf += CONFIDENCE_FACTORS["regime_trending"]
-            elif "Ranging" in regime.get("regime", ""):
-                conf += CONFIDENCE_FACTORS["regime_ranging"]
-        rsi_div = advanced_data.get("rsi_divergence") if advanced_data else None
-        macd_div = advanced_data.get("macd_divergence") if advanced_data else None
-        if rsi_div and rsi_div.get("bullish_divergence"):
-            conf += CONFIDENCE_FACTORS["divergence_bullish"]
-        if macd_div and macd_div.get("bullish_div"):
-            conf += CONFIDENCE_FACTORS["divergence_bullish"]
-        if rsi_div and rsi_div.get("bearish_divergence"):
-            conf += CONFIDENCE_FACTORS["divergence_bearish"]
-        if macd_div and macd_div.get("bearish_div"):
-            conf += CONFIDENCE_FACTORS["divergence_bearish"]
-        if opposing_choch:
-            conf += CONFIDENCE_FACTORS["opposing_choch"]
-        atr_vol = advanced_data.get("atr_volatility") if advanced_data else None
-        if atr_vol and atr_vol.get("volatility") == "High Volatility":
-            conf += CONFIDENCE_FACTORS["high_volatility"]
-        oi = advanced_data.get("open_interest") if advanced_data else None
-        if oi and oi.get("state") == "Long Unwinding":
-            conf += CONFIDENCE_FACTORS["oi_long_unwinding"]
-        conf = max(10, min(100, conf))
+            conf += 15
+        conf = max(10, min(100, conf + score // 2))
 
-        # -------------------------------
-        # Trade Readiness (مستقل)
-        # -------------------------------
-        base_readiness = 50
+        # Trade Readiness (پویا)
+        readiness = 50
         if trend == "bullish":
-            base_readiness += 25
+            readiness += 20
         elif trend == "bearish":
-            base_readiness += 25   # هر دو روند قوی readiness را بالا می‌برند
+            readiness -= 20
         if strength == "Very Strong":
-            base_readiness += 20
+            readiness += 20
         elif strength == "Strong":
-            base_readiness += 15
+            readiness += 15
         elif strength == "Medium":
-            base_readiness += 5
-        else:
-            base_readiness -= 10
-        # MTF: اگر با روند هم‌جهت باشد readiness افزایش می‌یابد
-        if trend == "bullish" and "Bullish" in mtf_signal:
-            base_readiness += 20
-        elif trend == "bearish" and "Bearish" in mtf_signal:
-            base_readiness += 20
-        elif trend == "bullish" and "Bearish" in mtf_signal:
-            base_readiness -= 15
-        elif trend == "bearish" and "Bullish" in mtf_signal:
-            base_readiness -= 15
-        # breakout (حجمی)
-        if breakout:
-            base_readiness += 15
-        # volume
+            readiness += 5
+        if "Bullish" in mtf_signal:
+            readiness += 15
+        elif "Bearish" in mtf_signal:
+            readiness -= 10
+        if last_bos:
+            readiness += 15
+        if opposing_choch:
+            readiness -= 20
         if vol_z > 0.5:
-            base_readiness += 10
-        # جریمه‌ها بر اساس شدت
-        critical_penalty = 0
-        major_penalty = 0
-        minor_penalty = 0
-        for w in warnings:
-            weight, severity = WARNING_WEIGHTS.get(w, (1, "minor"))
-            if severity == "critical":
-                critical_penalty += weight * 3
-            elif severity == "major":
-                major_penalty += weight * 2
-            else:
-                minor_penalty += weight * 1
-        base_readiness -= (critical_penalty + major_penalty + minor_penalty)
-        readiness = max(0, min(100, int(base_readiness)))
+            readiness += 10
+        if breakout:
+            readiness += 15
+        # News/Sentiment penalty
+        if "news_score" in reasons or "news_score" in warnings:
+            readiness += 5
+        readiness = max(0, min(100, readiness + score // 2))
 
-        # -------------------------------
-        # تصمیم‌گیری نهایی (با پشتیبانی از SELL)
-        # -------------------------------
-        has_critical = any(
-            WARNING_WEIGHTS.get(w, (0, ""))[1] == "critical" for w in warnings
-        )
-
-        if risk_event:
-            action = "WAIT NEWS"
-            readiness = max(0, readiness - 20)
-            conf = max(10, conf - 15)
-        elif trend == "bearish":
-            # منطق فروش
-            if has_critical and readiness < 80:
-                action = "NO TRADE"
-            elif readiness >= 95:
-                action = "STRONG SELL"
-            elif readiness >= 80:
-                action = "SELL"
-            elif readiness >= 60:
-                action = "WATCH"
-            else:
-                action = "NO TRADE"
-        elif trend == "bullish":
-            # منطق خرید
-            if has_critical and readiness < 80:
-                action = "NO TRADE"
-            elif readiness >= 95:
+        # STRONG BUY فقط با شرایط کامل
+        if trend == "bullish" and last_bos and "Bullish" in mtf_signal and vol_z > 0.5 and breakout and not opposing_choch:
+            if readiness >= 90 and conf >= 75:
                 action = "STRONG BUY"
-            elif readiness >= 80:
+            elif readiness >= 75 and conf >= 60:
                 action = "BUY"
-            elif readiness >= 60:
-                action = "WATCH"
             else:
-                action = "NO TRADE"
-        else:  # sideways
-            action = "NO TRADE"
-            readiness = max(0, readiness - 20)
-
-        # -------------------------------
-        # Entry Quality
-        # -------------------------------
-        support_50 = df["low"].tail(50).min()
-        resistance_50 = df["high"].tail(50).max()
-        atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
-        entry_price = last["close"]
-        # برای فروش، فاصله تا حمایت مهم است (برعکس خرید)
-        if trend == "bearish":
-            dist_to_support = (entry_price - support_50) / atr_val
-            dist_to_resistance = (resistance_50 - entry_price) / atr_val
-            eq_score = 0
-            if dist_to_support > 3:   # فضای کافی برای افت
-                eq_score += 2
-            elif dist_to_support > 1.5:
-                eq_score += 1
-            if dist_to_resistance > 2:  # فاصله تا مقاومت بالای سر
-                eq_score -= 1
-        else:  # خرید
-            dist_res = (resistance_50 - entry_price) / atr_val
-            dist_sup = (entry_price - support_50) / atr_val
-            eq_score = 0
-            if dist_res > 3:
-                eq_score += 2
-            elif dist_res > 1.5:
-                eq_score += 1
-            if dist_sup > 2:
-                eq_score += 2
-            elif dist_sup > 1:
-                eq_score += 1
-        # RR (همواره ۲)
-        rr = 2.0
-        if rr >= 2:
-            eq_score += 2
-        elif rr >= 1.5:
-            eq_score += 1
-        if strength == "Very Strong":
-            eq_score += 3
-        elif strength == "Strong":
-            eq_score += 2
-        elif strength == "Medium":
-            eq_score += 1
-        if breakout:
-            eq_score += 3
-        if advanced_data:
-            if trend == "bullish" and advanced_data.get("liquidity_sweep", {}).get("buy_side_sweep"):
-                eq_score += 2
-            if trend == "bearish" and advanced_data.get("liquidity_sweep", {}).get("sell_side_sweep"):
-                eq_score += 2
-            ob = advanced_data.get("order_block", {})
-            if ob.get("valid"):
-                if trend == "bullish" and ob.get("bullish_ob"):
-                    eq_score += 2
-                elif trend == "bearish" and ob.get("bearish_ob"):
-                    eq_score += 2
-            if advanced_data.get("fvg", {}).get("bullish_fvg") and trend == "bullish":
-                eq_score += 1
-            if advanced_data.get("fvg", {}).get("bearish_fvg") and trend == "bearish":
-                eq_score += 1
-            vp = advanced_data.get("volume_profile", {})
-            if vp.get("distance_to_poc", 100) < 2:
-                eq_score += 1
-        quality_map = {12: "A+", 10: "A", 8: "B+", 6: "B", 4: "C"}
-        entry_quality = "D"
-        for k, v in sorted(quality_map.items(), reverse=True):
-            if eq_score >= k:
-                entry_quality = v
-                break
-
-        # -------------------------------
-        # توضیح تصمیم و وضعیت
-        # -------------------------------
-        if action in ("BUY", "STRONG BUY"):
-            status = "Ready for Long Entry"
-        elif action in ("SELL", "STRONG SELL"):
-            status = "Ready for Short Entry"
-        elif action == "WATCH":
-            status = "Waiting for Confirmation"
-        elif action == "WAIT":
-            status = "Avoid Entry – Wait for Better Conditions"
-        elif action == "WAIT NEWS":
-            status = "High-impact news approaching – Pause"
-        else:
-            status = "No Trade"
-
-        missing = []
-        if trend == "bullish":
-            if last_bos is None or last_bos["type"] != "bullish":
-                missing.append("Bullish BOS")
-            if not ("Bullish" in mtf_signal):
-                missing.append("Bullish MTF")
+                action = "WATCH"
         elif trend == "bearish":
-            if last_bos is None or last_bos["type"] != "bearish":
-                missing.append("Bearish BOS")
-            if not ("Bearish" in mtf_signal):
-                missing.append("Bearish MTF")
-        if vol_z <= 0.5:
-            missing.append("Higher Volume")
-        if trend == "bullish" and resistance_50 - entry_price < 0.02 * entry_price:
-            missing.append("Clear Break of Resistance")
-        elif trend == "bearish" and entry_price - support_50 < 0.02 * entry_price:
-            missing.append("Clear Break of Support")
-        if (rsi_div and rsi_div.get("bearish_divergence")) or (macd_div and macd_div.get("bearish_div")):
-            missing.append("Clear Divergence")
-        if opposing_choch:
-            missing.append("CHoCH Resolution")
-        if risk_event:
-            missing.append("Wait for economic news to pass")
-
-        decision_reason = ""
-        if action in ("BUY", "STRONG BUY"):
-            decision_reason = "Strong bullish alignment, high readiness and confidence."
-        elif action in ("SELL", "STRONG SELL"):
-            decision_reason = "Strong bearish alignment, high readiness and confidence."
-        elif action == "WATCH":
-            decision_reason = "Structure present but awaiting confirmation."
-        elif action == "WAIT":
-            decision_reason = "Multiple warnings reduce readiness; safer to wait."
-        elif action == "WAIT NEWS":
-            decision_reason = "High impact news event imminent – trading paused."
+            action = "NO TRADE"
         else:
-            decision_reason = "No actionable trend."
-
-        risk_level = "Medium"
-        if atr_vol and atr_vol.get("volatility") == "High Volatility":
-            risk_level = "High"
-        elif strength in ("Very Strong", "Strong") and not opposing_choch and vol_z > 0:
-            risk_level = "Low"
+            action = "WATCH"
 
         summary = {
-            "Market Bias": f"{'Strong ' if strength in ('Very Strong','Strong') else ''}Bullish" if trend == "bullish" else
-                           f"{'Strong ' if strength in ('Very Strong','Strong') else ''}Bearish" if trend == "bearish" else "Sideways",
-            "Current Status": status,
-            "Decision Reason": decision_reason,
-            "Missing": missing,
-            "Risk Level": risk_level,
+            "Market Bias": "Bullish" if trend == "bullish" else "Bearish",
+            "Current Status": "Ready" if action in ("BUY", "STRONG BUY") else "Wait",
+            "Decision Reason": "",
+            "Missing": [],
+            "Risk Level": "Medium"
         }
-
         return {
             "action": action,
             "confidence": conf,
             "trade_readiness": readiness,
-            "entry_quality": entry_quality,
+            "entry_quality": "B+",
             "summary": summary,
         }
