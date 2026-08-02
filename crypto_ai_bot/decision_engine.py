@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Professional Decision Engine (Balanced – Smart Action + Calibrated Readiness)
+Professional Decision Engine (Balanced – Smart Action + Truly Dynamic Readiness)
 """
 
 from weights import WARNING_WEIGHTS
@@ -43,10 +43,9 @@ class DecisionEngine:
         if risk_event: conf -= 15
         conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness (کالیبره‌شده – پویا) ----
-        readiness = 30   # پایه پایین‌تر
+        # ---- Trade Readiness (کاملاً پویا) ----
+        readiness = 30
 
-        # روند
         if trend == "bullish":
             readiness += 25
         elif trend == "bearish":
@@ -54,41 +53,34 @@ class DecisionEngine:
         else:
             readiness -= 10
 
-        # قدرت روند
         if strength == "Very Strong": readiness += 20
         elif strength == "Strong": readiness += 15
         elif strength == "Medium": readiness += 5
         else: readiness -= 10
 
-        # هم‌جهتی تایم‌فریم
         if mtf_signal == "Strong Bullish": readiness += 20
         elif mtf_signal == "Bullish": readiness += 10
         elif mtf_signal == "Bearish": readiness -= 10
         elif mtf_signal == "Strong Bearish": readiness -= 20
 
-        # BOS
         if last_bos:
             readiness += 15
         else:
             readiness -= 10
 
-        # CHoCH مخالف
         if opposing_choch:
             readiness -= 25
 
-        # حجم
         if vol_z > 0.5:
             readiness += 15
         elif vol_z < -0.5:
             readiness -= 10
         else:
-            readiness -= 5   # حجم معمولی
+            readiness -= 5
 
-        # شکست
         if breakout:
             readiness += 20
 
-        # اخبار و احساسات (اثر واقعی)
         if news_score > 0:
             readiness += int(news_score * 2)
         elif news_score < -5:
@@ -99,17 +91,15 @@ class DecisionEngine:
         elif sentiment_score < -5:
             readiness -= 10
 
-        # ریسک ماکرو
         if risk_event:
             readiness -= 30
 
-        # سهم امتیاز تکنیکال (محدود)
-        readiness += score // 3
+        # تأثیر Score تکنیکال (محدود)
+        readiness += min(score // 3, 15)   # حداکثر ۱۵ امتیاز از Score
 
-        # محدودسازی نهایی
         readiness = max(0, min(100, readiness))
 
-        # ---- Action اصلی (بدون تغییر) ----
+        # ---- Action اصلی ----
         critical_rejections = []
         if risk_event:
             critical_rejections.append("Macro Risk Active")
