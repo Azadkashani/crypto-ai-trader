@@ -1,34 +1,24 @@
 """
 Crypto AI Bot v1.1
-Advanced Report Engine (Smart Price Display, Macro News, Sentiment Drivers)
+Advanced Report Engine (Smart Price Display, Macro News, Relevant News)
 """
 
 import pandas as pd
 
-
 def smart_price(price):
-    """نمایش قیمت‌های خیلی کوچک با ۸ رقم اعشار"""
-    if price is None:
-        return "N/A"
-    if price < 0.01:
-        return f"{price:.8f}"
-    else:
-        return f"{price:.4f}"
-
+    if price is None: return "N/A"
+    if abs(price) < 0.01: return f"{price:.8f}"
+    return f"{price:.4f}"
 
 class ReportEngine:
-
     @staticmethod
     def show(results):
-        if not results:
-            print("No Data")
-            return
+        if not results: print("No Data"); return
 
         table = pd.DataFrame(results)
         table = table.sort_values(by="Trade Readiness", ascending=False)
 
-        print("\n")
-        print("=" * 140)
+        print("\n" + "=" * 140)
         print("CRYPTO AI BOT MARKET SCANNER v1.1")
         print("=" * 140)
 
@@ -49,7 +39,6 @@ class ReportEngine:
             entry = item.get("Entry", 0)
             sl = item.get("StopLoss", 0)
             tp = item.get("TakeProfit", 0)
-
             sl_pct = ((sl - entry) / entry) * 100 if entry else 0
             tp_pct = ((tp - entry) / entry) * 100 if entry else 0
 
@@ -57,8 +46,7 @@ class ReportEngine:
             print(f"Symbol: {item['Symbol']}")
             print(f"Action: {item['Action']}  |  Confidence: {item['Confidence']}%  |  Readiness: {item['Trade Readiness']}")
             print(f"Entry Quality: {item.get('Entry Quality', 'N/A')}  |  Risk Level: {item.get('Summary', {}).get('Risk Level', 'N/A')}")
-            if "News Score" in item:
-                print(f"News Score: {item['News Score']}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
+            print(f"News Score: {item.get('News Score', 0)}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
             print(f"Take Profit: {smart_price(tp)} ({tp_pct:+.2f}%)")
@@ -66,10 +54,14 @@ class ReportEngine:
             print(f"Input: {item.get('InputPct', 'N/A')}%")
             print(f"Risk/Reward: 2.0")
 
-            # Macro News
-            macro = item.get("Macro News")
-            if macro:
-                print(f"Macro News: {macro.get('bias', 'Neutral')} (Impact: {macro.get('impact', 0)})")
+            if item.get("Macro Risk"):
+                print(f"⚠️ Macro Risk Active: {item.get('Macro Event', 'High Impact News')}")
+
+            relevant = item.get("Relevant News", [])
+            if relevant:
+                print("Relevant News:")
+                for r in relevant[:3]:
+                    print(f"  {r['source']}: {r['title']} ({r['sentiment']}, impact {r['impact']})")
 
             print(f"Market Bias: {item['Summary'].get('Market Bias', '')}")
             print(f"Status: {item['Summary'].get('Current Status', '')}")
@@ -84,13 +76,9 @@ class ReportEngine:
                 print("Key Reasons:")
                 for r in weighted_reasons[:5]:
                     print(f"  {r}")
-            weighted_warnings = item.get("Weighted Warnings", [])
-            if weighted_warnings:
-                print("Key Warnings:")
-                for w in weighted_warnings[:3]:
-                    print(f"  {w}")
             print("")
 
+        # جزئیات کامل برای همه فرصت‌ها
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -107,13 +95,9 @@ class ReportEngine:
             print(f"Take Profit: {smart_price(tp)} ({tp_pct:+.2f}%)")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
             print(f"Input: {item.get('InputPct', 'N/A')}%")
-            print(f"Risk/Reward: 2.0")
-            if "News Score" in item:
-                print(f"News Score: {item['News Score']}")
-                print(f"Sentiment Score: {item['Sentiment Score']}")
-            macro = item.get("Macro News")
-            if macro:
-                print(f"Macro News: {macro.get('bias', 'Neutral')} (Impact: {macro.get('impact', 0)})")
+            if item.get("Macro Risk"):
+                print(f"⚠️ Macro Risk Active: {item.get('Macro Event', '')}")
+            print(f"News Score: {item.get('News Score', 0)}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
             print(f"Reasons: {item.get('Reasons', '')}")
             print(f"Warnings: {item.get('Warnings', '')}")
             print("-" * 75)
