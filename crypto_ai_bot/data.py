@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v5.7
+Crypto AI Bot v1.0
 Market Data Engine (Gate.io Futures Perpetual)
 """
 
@@ -14,7 +14,7 @@ class MarketData:
         if EXCHANGE_NAME.lower() == "gate":
             self.exchange = ccxt.gate({
                 "enableRateLimit": True,
-                "options": {"defaultType": "swap"}   # فیوچرز دائمی
+                "options": {"defaultType": "swap"}   # perpetual futures
             })
         else:
             raise Exception("Exchange Not Supported")
@@ -46,8 +46,8 @@ class MarketData:
         for symbol, market in markets.items():
             if (
                 market.get("active", False) and
-                market.get("swap", False) and      # فیوچرز دائمی
-                market.get("linear", False) and    # linear = USDT margined
+                market.get("swap", False) and
+                market.get("linear", False) and
                 market.get("quote") == "USDT"
             ):
                 symbols.append(symbol)
