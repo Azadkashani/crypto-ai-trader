@@ -1,21 +1,16 @@
 """
 Crypto AI Bot v1.1
-Advanced Report Engine (Full Precision Price, Macro News, Relevant News)
+Advanced Report Engine (Smart Price Display, Dual Targets, R:R per target)
 """
 
 import pandas as pd
 
 def smart_price(price):
-    """نمایش قیمت با دقت کامل و بدون رَند کردن"""
     if price is None: return "N/A"
-    # تبدیل به رشته با ۸ رقم اعشار، سپس حذف صفرهای اضافی انتهایی
-    s = f"{price:.8f}"
-    # برای ارزهای معمولی هم می‌توان ۴ رقم اعشار نمایش داد
-    if abs(price) >= 1:
-        return f"{price:.4f}"
-    else:
-        # حذف صفرهای بی‌فایده از انتها
+    if abs(price) < 0.01:
+        s = f"{price:.8f}"
         return s.rstrip('0').rstrip('.') if '.' in s else s
+    return f"{price:.4f}"
 
 class ReportEngine:
     @staticmethod
@@ -45,21 +40,28 @@ class ReportEngine:
             item = results[i]
             entry = item.get("Entry", 0)
             sl = item.get("StopLoss", 0)
-            tp = item.get("TakeProfit", 0)
+            tp1 = item.get("TP1", item.get("TakeProfit", 0))
+            tp2 = item.get("TP2", 0)
+
             sl_pct = ((sl - entry) / entry) * 100 if entry else 0
-            tp_pct = ((tp - entry) / entry) * 100 if entry else 0
+            tp1_pct = ((tp1 - entry) / entry) * 100 if entry else 0
+            tp2_pct = ((tp2 - entry) / entry) * 100 if entry else 0
+
+            rr1 = abs((tp1 - entry) / (sl - entry)) if abs(sl - entry) > 0 else 0
+            rr2 = abs((tp2 - entry) / (sl - entry)) if abs(sl - entry) > 0 else 0
 
             print(f"--- Rank {i+1} ---")
             print(f"Symbol: {item['Symbol']}")
             print(f"Action: {item['Action']}  |  Confidence: {item['Confidence']}%  |  Readiness: {item['Trade Readiness']}")
             print(f"Entry Quality: {item.get('Entry Quality', 'N/A')}  |  Risk Level: {item.get('Summary', {}).get('Risk Level', 'N/A')}")
-            print(f"News Score: {item.get('News Score', 0)}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
+            if "News Score" in item:
+                print(f"News Score: {item.get('News Score', 0)}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
-            print(f"Take Profit: {smart_price(tp)} ({tp_pct:+.2f}%)")
+            print(f"TP1: {smart_price(tp1)} ({tp1_pct:+.2f}%)  |  R:R = {rr1:.1f}")
+            print(f"TP2: {smart_price(tp2)} ({tp2_pct:+.2f}%)  |  R:R = {rr2:.1f}")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
             print(f"Input: {item.get('InputPct', 'N/A')}%")
-            print(f"Risk/Reward: 2.0")
 
             if item.get("Macro Risk"):
                 print(f"⚠️ Macro Risk Active: {item.get('Macro Event', 'High Impact News')}")
@@ -85,21 +87,27 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
-        # جزئیات کامل
+        # جزئیات کامل برای همه فرصت‌ها
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
             sl = item.get("StopLoss", 0)
-            tp = item.get("TakeProfit", 0)
+            tp1 = item.get("TP1", item.get("TakeProfit", 0))
+            tp2 = item.get("TP2", 0)
+
             sl_pct = ((sl - entry) / entry) * 100 if entry else 0
-            tp_pct = ((tp - entry) / entry) * 100 if entry else 0
+            tp1_pct = ((tp1 - entry) / entry) * 100 if entry else 0
+            tp2_pct = ((tp2 - entry) / entry) * 100 if entry else 0
+            rr1 = abs((tp1 - entry) / (sl - entry)) if abs(sl - entry) > 0 else 0
+            rr2 = abs((tp2 - entry) / (sl - entry)) if abs(sl - entry) > 0 else 0
 
             print(f"\nSymbol: {item['Symbol']}")
             print(f"Action: {item['Action']}")
             print(f"Trade Readiness: {item['Trade Readiness']}")
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
-            print(f"Take Profit: {smart_price(tp)} ({tp_pct:+.2f}%)")
+            print(f"TP1: {smart_price(tp1)} ({tp1_pct:+.2f}%)  |  R:R = {rr1:.1f}")
+            print(f"TP2: {smart_price(tp2)} ({tp2_pct:+.2f}%)  |  R:R = {rr2:.1f}")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
             print(f"Input: {item.get('InputPct', 'N/A')}%")
             if item.get("Macro Risk"):
