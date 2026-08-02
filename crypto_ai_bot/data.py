@@ -52,11 +52,28 @@ class MarketData:
         markets = self.exchange.load_markets()
         usdt_futures = []
 
+        # الگوهای ممنوعه (هر نمادی که شامل این کلمات باشد حذف می‌شود)
         EXCLUDE_PATTERNS = [
-            "BOT", "GRID", "STRATEGY", "SYNTH", "INDEX", "TEST",
-            "DEMO", "INTERNAL", "SETTLEMENT", "INACTIVE", "DELISTED",
-            "BEAR", "BULL", "UP", "DOWN", "ETF", "TOKENIZED", "STOCK",
-            "EQUITY", "SHARE", "MU", "SOXL", "TSLA", "AAPL", "GOOGL"
+            # ربات‌ها و استراتژی‌ها
+            "BOT", "GRID", "STRATEGY", "API", "SYNTH", "INDEX",
+            # تست و دمو
+            "TEST", "DEMO", "INTERNAL",
+            # وضعیت غیرفعال
+            "INACTIVE", "DELISTED", "SETTLEMENT",
+            # توکن‌های اهرم‌دار و ETF
+            "BEAR", "BULL", "UP", "DOWN", "ETF",
+            # سهام توکنیزه‌شده (کاملاً حذف شوند)
+            "TOKENIZED", "STOCK", "EQUITY", "SHARE",
+            # لیست صریح سهام معروف در Gate.io
+            "MU/USDT", "SOXL/USDT", "TSLA/USDT", "AAPL/USDT",
+            "GOOGL/USDT", "AMZN/USDT", "MSFT/USDT", "NFLX/USDT",
+            "NVDA/USDT", "META/USDT", "BABA/USDT", "SPY/USDT",
+            "QQQ/USDT", "AMD/USDT", "INTC/USDT", "PYPL/USDT",
+            "DIS/USDT", "V/USDT", "MA/USDT", "JPM/USDT",
+            "GME/USDT", "AMC/USDT", "COIN/USDT", "SNAP/USDT",
+            "TWTR/USDT", "UBER/USDT", "LYFT/USDT", "ZM/USDT",
+            # سایر نمادهای غیرفیوچرز
+            "CXMT/USDT", "SKHYNIX/USDT", "SNDK/USDT",
         ]
 
         for symbol, market in markets.items():
@@ -67,15 +84,22 @@ class MarketData:
                     market.get("quote") == "USDT"):
                 continue
 
+            # بررسی وضعیت معاملاتی از info
             info = market.get("info", {})
             if info:
-                # بررسی وضعیت معاملاتی
-                if info.get("trade_status", "").lower() not in ("tradable", ""):
+                trade_status = info.get("trade_status", "").lower()
+                if trade_status not in ("tradable", ""):
                     continue
-                # حذف نمادهای غیرمجاز
-                name_upper = symbol.upper()
-                if any(pattern in name_upper for pattern in EXCLUDE_PATTERNS):
-                    continue
+
+            # بررسی الگوهای ممنوعه
+            name_upper = symbol.upper()
+            excluded = False
+            for pattern in EXCLUDE_PATTERNS:
+                if pattern.upper() in name_upper:
+                    excluded = True
+                    break
+            if excluded:
+                continue
 
             usdt_futures.append(symbol)
 
@@ -90,6 +114,7 @@ class MarketData:
             tickers = self.exchange.fetch_tickers(usdt_futures)
         except Exception as e:
             print(f"Error fetching tickers: {e}")
+            # در صورت خطا، همان لیست فیلترشده (حداکثر ۵۰ تای اول الفبایی) را برگردان
             return sorted(usdt_futures)[:50]
 
         symbol_volumes = []
