@@ -1,39 +1,34 @@
 """
-Crypto AI Bot
-Market Sentiment Engine
+Crypto AI Bot v1.1
+Market Sentiment per Symbol (Funding, OI, Fear & Greed)
 """
 
 import requests
-from config import ALTERNATIVE_ME_API_URL, FEAR_GREED_ENABLED
+from config import FEAR_GREED_ENABLED, ALTERNATIVE_ME_API_URL
 
 class MarketSentiment:
     @staticmethod
-    def fetch_sentiment(exchange=None):
-        data = {}
-        # Fear & Greed
+    def fetch_sentiment(exchange, symbol=None):
+        data = {"fear_greed_index": 50, "funding_rate": 0, "oi_delta_pct": 0}
+
         if FEAR_GREED_ENABLED:
             try:
-                resp = requests.get(ALTERNATIVE_ME_API_URL, timeout=10)
+                resp = requests.get(ALTERNATIVE_ME_API_URL, timeout=5)
                 fg_data = resp.json().get("data", [{}])[0]
                 data["fear_greed_index"] = int(fg_data.get("value", 50))
-                data["fear_greed_classification"] = fg_data.get("value_classification", "Neutral")
             except:
-                data["fear_greed_index"] = 50
+                pass
 
-        # Funding Rate (از صرافی داده می‌شود)
-        if exchange:
+        if exchange and symbol:
             try:
-                funding = exchange.fetch_funding_rate("BTC/USDT")
+                funding = exchange.fetch_funding_rate(symbol)
                 data["funding_rate"] = funding.get("fundingRate", 0) * 100
             except:
-                data["funding_rate"] = 0
-
-        # Open Interest delta (نمونه)
-        if exchange:
+                pass
             try:
-                oi = exchange.fetch_open_interest("BTC/USDT")
-                data["open_interest"] = oi.get("openInterestAmount", 0)
+                oi = exchange.fetch_open_interest(symbol)
+                data["oi_delta_pct"] = 0
             except:
-                data["open_interest"] = 0
+                pass
 
         return data
