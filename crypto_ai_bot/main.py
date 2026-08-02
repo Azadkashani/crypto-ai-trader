@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v1.0
+Crypto AI Bot v1.1
 Signal-Only Mode – Gate.io Futures
 """
 
