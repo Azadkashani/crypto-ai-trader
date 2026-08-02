@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v1.0
+Crypto AI Bot v1.1
 Advanced Report Engine (Entry, SL%, TP%, Leverage, Input%)
 """
 
@@ -19,7 +19,7 @@ class ReportEngine:
 
         print("\n")
         print("=" * 140)
-        print("CRYPTO AI BOT MARKET SCANNER v5.7")
+        print("CRYPTO AI BOT MARKET SCANNER v1.1")
         print("=" * 140)
 
         columns = [
