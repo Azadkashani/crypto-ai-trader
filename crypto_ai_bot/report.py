@@ -1,14 +1,21 @@
 """
 Crypto AI Bot v1.1
-Advanced Report Engine (Smart Price Display, Macro News, Relevant News)
+Advanced Report Engine (Full Precision Price, Macro News, Relevant News)
 """
 
 import pandas as pd
 
 def smart_price(price):
+    """نمایش قیمت با دقت کامل و بدون رَند کردن"""
     if price is None: return "N/A"
-    if abs(price) < 0.01: return f"{price:.8f}"
-    return f"{price:.4f}"
+    # تبدیل به رشته با ۸ رقم اعشار، سپس حذف صفرهای اضافی انتهایی
+    s = f"{price:.8f}"
+    # برای ارزهای معمولی هم می‌توان ۴ رقم اعشار نمایش داد
+    if abs(price) >= 1:
+        return f"{price:.4f}"
+    else:
+        # حذف صفرهای بی‌فایده از انتها
+        return s.rstrip('0').rstrip('.') if '.' in s else s
 
 class ReportEngine:
     @staticmethod
@@ -78,7 +85,7 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
-        # جزئیات کامل برای همه فرصت‌ها
+        # جزئیات کامل
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
