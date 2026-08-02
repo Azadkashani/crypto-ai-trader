@@ -86,6 +86,14 @@ class MarketScanner:
         all_raw_news = []
         if ENABLE_NEWS_ENGINE:
             all_raw_news = NewsEngine.fetch_news()
+            # تحلیل اخبار یکبار برای همه
+            analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
+            # افزودن currencies به هر خبر
+            for news in analyzed_news:
+                news["currencies"] = NewsMapping.get_related_symbols(news["title"])
+        else:
+            analyzed_news = []
+
         sentiment_data = None
         if ENABLE_SENTIMENT_ENGINE:
             sentiment_data = MarketSentiment.fetch_sentiment(self.data.exchange)
@@ -107,16 +115,20 @@ class MarketScanner:
 
                 news_score_val = 0
                 sentiment_score_val = 0
-                if ENABLE_NEWS_ENGINE or ENABLE_SENTIMENT_ENGINE:
-                    analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
-                    related_news = []
-                    for news in analyzed_news:
-                        syms = NewsMapping.get_related_symbols(news["title"])
-                        if "MARKET" in syms or symbol.split("/")[0] in syms:
-                            related_news.append(news)
-                    scores = NewsScoring.calculate(related_news, sentiment_data)
+                macro_news = {"bias": "Neutral", "impact": 0}
+                if ENABLE_NEWS_ENGINE:
+                    # فیلتر اخبار مرتبط
+                    related_news = [n for n in analyzed_news if NewsMapping.get_related_symbols(n["title"])]
+                    scores = NewsScoring.calculate(related_news, sentiment_data, symbol)
                     news_score_val = scores["news_score"]
                     sentiment_score_val = scores["sentiment_score"]
+                    # Macro News summary
+                    if news_score_val > 0:
+                        macro_news = {"bias": "Bullish", "impact": news_score_val}
+                    elif news_score_val < 0:
+                        macro_news = {"bias": "Bearish", "impact": news_score_val}
+                    else:
+                        macro_news = {"bias": "Neutral", "impact": 0}
 
                 analysis = ScoringEngine.calculate(
                     df,
@@ -155,7 +167,6 @@ class MarketScanner:
                 resistance = round(df["high"].tail(50).max(), 4)
                 entry = round(last["close"], 4)
 
-                # محاسبه SL/TP (R:R=2)
                 if "SELL" in action:
                     stop_loss = round(entry + (atr_val * 1.5), 4)
                     take_profit = round(entry - (atr_val * 3), 4)
@@ -165,10 +176,8 @@ class MarketScanner:
                     take_profit = round(entry + (atr_val * 3), 4)
                     side = "buy"
 
-                # اهرم پویا
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
 
-                # Input % (درصد سرمایهٔ پیشنهادی برای ریسک ۱٪)
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
                 input_pct = round((1.0 / (sl_pct * 100)) * 100, 2) if sl_pct > 0 else 100.0
 
@@ -202,6 +211,7 @@ class MarketScanner:
                     "Trade Readiness": trade_readiness,
                     "News Score": news_score_val,
                     "Sentiment Score": sentiment_score_val,
+                    "Macro News": macro_news,
                     "advanced": advanced_data
                 })
 
