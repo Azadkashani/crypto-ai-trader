@@ -88,7 +88,7 @@ NEWS_SOURCES = [
     {"name": "CoinDesk", "url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "type": "rss"},
     {"name": "Cointelegraph", "url": "https://cointelegraph.com/rss", "type": "rss"},
 ]
-NEWS_MAX_AGE_HOURS = 2
+NEWS_MAX_AGE_HOURS = 6
 
 ALTERNATIVE_ME_API_URL = "https://api.alternative.me/fng/"
 FEAR_GREED_ENABLED = True
