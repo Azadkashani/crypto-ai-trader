@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Professional Decision Engine (Balanced – Smart Action + Truly Dynamic Readiness v2)
+Professional Decision Engine (Balanced – Smart Action + Dynamic Readiness + SELL Support)
 """
 
 from weights import WARNING_WEIGHTS
@@ -21,17 +21,21 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence (بدون تغییر) ----
+        # ---- Confidence (مانند قبل) ----
         conf = 30
         if trend == "bullish": conf += 10
-        elif trend == "bearish": conf -= 10
+        elif trend == "bearish": conf += 10      # برای فروش هم روند قوی مهم است
         if strength == "Very Strong": conf += 20
         elif strength == "Strong": conf += 15
         elif strength == "Medium": conf += 5
         else: conf -= 10
-        if "Bullish" in mtf_signal: conf += 15
-        elif "Bearish" in mtf_signal: conf -= 10
-        if last_bos: conf += 15
+        if ("Bullish" in mtf_signal and trend == "bullish") or ("Bearish" in mtf_signal and trend == "bearish"):
+            conf += 15
+        elif ("Bearish" in mtf_signal and trend == "bullish") or ("Bullish" in mtf_signal and trend == "bearish"):
+            conf -= 10
+        if last_bos:
+            if (trend == "bullish" and last_bos["type"] == "bullish") or (trend == "bearish" and last_bos["type"] == "bearish"):
+                conf += 15
         if opposing_choch: conf -= 20
         avg_vol = df["volume"].tail(20).mean()
         std_vol = df["volume"].tail(20).std()
@@ -43,14 +47,12 @@ class DecisionEngine:
         if risk_event: conf -= 15
         conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness (کاملاً پویا و سخت‌گیرانه) ----
-        readiness = 20   # پایهٔ پایین‌تر
+        # ---- Trade Readiness (پویا و متقارن برای خرید/فروش) ----
+        readiness = 20
 
         # روند
-        if trend == "bullish":
+        if trend == "bullish" or trend == "bearish":
             readiness += 15
-        elif trend == "bearish":
-            readiness -= 30
         else:
             readiness -= 15
 
@@ -61,14 +63,17 @@ class DecisionEngine:
         else: readiness -= 10
 
         # هم‌جهتی MTF
-        if mtf_signal == "Strong Bullish": readiness += 10
-        elif mtf_signal == "Bullish": readiness += 5
-        elif mtf_signal == "Bearish": readiness -= 10
-        elif mtf_signal == "Strong Bearish": readiness -= 20
+        if (trend == "bullish" and "Bullish" in mtf_signal) or (trend == "bearish" and "Bearish" in mtf_signal):
+            readiness += 10
+        elif (trend == "bullish" and "Bearish" in mtf_signal) or (trend == "bearish" and "Bullish" in mtf_signal):
+            readiness -= 10
 
         # BOS
         if last_bos:
-            readiness += 10
+            if (trend == "bullish" and last_bos["type"] == "bullish") or (trend == "bearish" and last_bos["type"] == "bearish"):
+                readiness += 10
+            else:
+                readiness -= 10
         else:
             readiness -= 10
 
@@ -76,35 +81,44 @@ class DecisionEngine:
         if opposing_choch:
             readiness -= 20
 
-        # حجم (تأثیر قوی‌تر)
+        # حجم
         if vol_z > 0.5:
             readiness += 10
         elif vol_z < -0.5:
             readiness -= 15
         else:
-            readiness -= 5   # حجم معمولی جریمه دارد
+            readiness -= 5
 
         # شکست
         if breakout:
             readiness += 10
 
-        # News & Sentiment (تأثیر واقعی)
-        if news_score > 0:
-            readiness += min(int(news_score * 2), 10)
-        elif news_score < -5:
-            readiness -= 15
+        # News & Sentiment (جهت‌دار)
+        if trend == "bullish":
+            if news_score > 0:
+                readiness += min(int(news_score * 2), 10)
+            elif news_score < -5:
+                readiness -= 15
+            if sentiment_score > 0:
+                readiness += min(int(sentiment_score * 2), 10)
+            elif sentiment_score < -5:
+                readiness -= 10
+        elif trend == "bearish":
+            if news_score < 0:
+                readiness += min(abs(int(news_score * 2)), 10)
+            elif news_score > 5:
+                readiness -= 15
+            if sentiment_score < 0:
+                readiness += min(abs(int(sentiment_score * 2)), 10)
+            elif sentiment_score > 5:
+                readiness -= 10
 
-        if sentiment_score > 0:
-            readiness += min(int(sentiment_score * 2), 10)
-        elif sentiment_score < -5:
-            readiness -= 10
-
-        # Macro Risk
+        # ریسک ماکرو
         if risk_event:
             readiness -= 30
 
-        # سهم امتیاز تکنیکال (کاهش یافته)
-        readiness += min(score // 5, 10)   # حداکثر ۱۰ امتیاز از Score
+        # سهم امتیاز تکنیکال
+        readiness += min(score // 5, 10)
 
         readiness = max(0, min(100, readiness))
 
@@ -112,12 +126,10 @@ class DecisionEngine:
         critical_rejections = []
         if risk_event:
             critical_rejections.append("Macro Risk Active")
-        if trend == "bearish":
-            critical_rejections.append("Bearish Trend")
         if opposing_choch:
             critical_rejections.append("Opposing CHoCH")
-        if news_score < -10:
-            critical_rejections.append("Strong Negative News")
+        if (trend == "bullish" and news_score < -10) or (trend == "bearish" and news_score > 10):
+            critical_rejections.append("Strong Contradictory News")
 
         if critical_rejections:
             action = "WATCH"
@@ -125,25 +137,35 @@ class DecisionEngine:
         elif trend == "bullish":
             if readiness >= 70 and conf >= 65:
                 action = "STRONG BUY"
-                decision_reason = "All conditions aligned strongly."
+                decision_reason = "All conditions aligned strongly for long."
             elif readiness >= 55 and conf >= 50:
                 action = "BUY"
-                decision_reason = "Good setup with sufficient confirmation."
+                decision_reason = "Good setup for long."
             else:
                 action = "WATCH"
-                decision_reason = "Waiting for stronger readiness/confidence."
+                decision_reason = "Waiting for stronger long signal."
+        elif trend == "bearish":
+            if readiness >= 70 and conf >= 65:
+                action = "STRONG SELL"
+                decision_reason = "All conditions aligned strongly for short."
+            elif readiness >= 55 and conf >= 50:
+                action = "SELL"
+                decision_reason = "Good setup for short."
+            else:
+                action = "WATCH"
+                decision_reason = "Waiting for stronger short signal."
         else:
             action = "WATCH"
-            decision_reason = "Trend not clearly bullish."
+            decision_reason = "Trend not clearly directional."
 
         summary = {
-            "Market Bias": "Bullish" if trend == "bullish" else "Bearish",
+            "Market Bias": "Bullish" if trend == "bullish" else "Bearish" if trend == "bearish" else "Sideways",
             "Current Status": decision_reason,
             "Decision Reason": decision_reason,
             "Missing": [],
             "Risk Level": "Medium"
         }
-        print(f"[DecisionEngine v2.0] {trend} | Readiness={readiness} | Conf={conf}")   # تأیید نسخه
+        print(f"[DecisionEngine v2.1] {trend} | Readiness={readiness} | Conf={conf}")
         return {
             "action": action,
             "confidence": conf,
