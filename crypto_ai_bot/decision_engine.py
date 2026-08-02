@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Professional Decision Engine (Macro, News, Sentiment integrated)
+Professional Decision Engine (Balanced – Smart Action)
 """
 
 from weights import WARNING_WEIGHTS
@@ -21,7 +21,7 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # Confidence
+        # ---- Confidence (تکنیکال + News/Sentiment/Macro) ----
         conf = 30
         if trend == "bullish": conf += 10
         elif trend == "bearish": conf -= 10
@@ -38,11 +38,15 @@ class DecisionEngine:
         vol_z = (last["volume"] - avg_vol) / std_vol if std_vol != 0 else 0
         if vol_z > 0.5: conf += 10
         if breakout: conf += 15
-        conf += int(news_score * 2) + int(sentiment_score * 2)
+        # News/Sentiment فقط در صورت منفی بودن شدید جریمه می‌کنند
+        if news_score < -5:
+            conf -= 10
+        if sentiment_score < -5:
+            conf -= 5
         if risk_event: conf -= 15
         conf = max(10, min(100, conf))
 
-        # Trade Readiness
+        # ---- Trade Readiness (تکنیکال + News/Sentiment/Macro) ----
         readiness = 50
         if trend == "bullish": readiness += 20
         elif trend == "bearish": readiness -= 20
@@ -55,30 +59,41 @@ class DecisionEngine:
         if opposing_choch: readiness -= 20
         if vol_z > 0.5: readiness += 10
         if breakout: readiness += 15
+        # تأثیر News/Sentiment
         readiness += int(news_score) + int(sentiment_score)
         if risk_event: readiness -= 25
         readiness = max(0, min(100, readiness + score // 2))
 
-        # Action
+        # ---- Action اصلی ----
+        # دلایل رد شدن (فقط موارد بحرانی)
+        critical_rejections = []
         if risk_event:
+            critical_rejections.append("Macro Risk Active")
+        if trend == "bearish":
+            critical_rejections.append("Bearish Trend")
+        if opposing_choch:
+            critical_rejections.append("Opposing CHoCH")
+        # خبر بسیار منفی اختصاصی
+        if news_score < -10:
+            critical_rejections.append("Strong Negative News")
+
+        if critical_rejections:
             action = "WATCH"
-            decision_reason = "Macro Risk Active – High Impact news approaching."
-        elif trend == "bearish":
-            action = "NO TRADE"
-            decision_reason = "Bearish trend."
-        elif trend == "bullish" and last_bos and "Bullish" in mtf_signal and vol_z > 0.5 and not opposing_choch and news_score >= 0:
-            if readiness >= 90 and conf >= 75:
+            decision_reason = "Blocked by: " + ", ".join(critical_rejections)
+        elif trend == "bullish":
+            # اولویت‌بندی بر اساس Readiness و Confidence
+            if readiness >= 80 and conf >= 65:
                 action = "STRONG BUY"
-                decision_reason = "All conditions aligned: BOS, MTF, Volume, Positive News/Sentiment."
-            elif readiness >= 75 and conf >= 60:
+                decision_reason = "All conditions aligned strongly."
+            elif readiness >= 65 and conf >= 50:
                 action = "BUY"
-                decision_reason = "Good setup, awaiting full confirmation."
+                decision_reason = "Good setup with sufficient confirmation."
             else:
                 action = "WATCH"
-                decision_reason = "Missing some confirmations."
+                decision_reason = "Waiting for stronger readiness/confidence."
         else:
             action = "WATCH"
-            decision_reason = "Waiting for stronger signals."
+            decision_reason = "Trend not clearly bullish."
 
         summary = {
             "Market Bias": "Bullish" if trend == "bullish" else "Bearish",
