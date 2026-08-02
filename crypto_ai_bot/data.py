@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Data Engine (Gate.io Futures – Ultra-Strict Perpetual Swap Filter)
+Market Data Engine (Gate.io Futures – Ultra-Strict Perpetual Swap Filter + No Stock Tokens)
 """
 
 import ccxt
@@ -43,12 +43,13 @@ class MarketData:
     def get_usdt_symbols(self):
         """
         دریافت فقط قراردادهای واقعی فیوچرز دائمی (Perpetual Swap) USDT از Gate.io.
+        تمام توکن‌های سهام (AAPLX, MRVL, SOXS, TSLAX, ...) و نمادهای غیرفیوچرزی حذف می‌شوند.
         """
         print("Loading futures markets...")
         markets = self.exchange.load_markets()
         usdt_futures = []
 
-        # الگوهای ممنوعه (هر نمادی که شامل این عبارات باشد حذف می‌شود)
+        # الگوهای ممنوعه (حذف تمام نمادهای سهام، ربات‌ها و ...)
         EXCLUDE_PATTERNS = [
             # ربات‌ها، استراتژی‌ها، شاخص‌ها
             "BOT", "GRID", "STRATEGY", "API", "SYNTH", "INDEX",
@@ -59,10 +60,12 @@ class MarketData:
             "INACTIVE", "DELISTED", "SETTLEMENT",
             # توکن‌های اهرم‌دار و ETF
             "BEAR", "BULL", "UP", "DOWN", "ETF",
-            # سهام توکنیزه‌شده
+            # سهام توکنیزه‌شده (لیست کامل)
             "TOKENIZED", "STOCK", "EQUITY", "SHARE",
-            # لیست صریح سهام معروف و نمادهای غیرفیوچرزی
-            "MU/USDT", "SOXL/USDT", "TSLA/USDT", "AAPL/USDT",
+            # پسوندهای معروف توکن‌های سهام
+            "X/USDT",     # هر نمادی که به X/USDT ختم شود (مثل AAPLX, TSLAX, ...)
+            # لیست صریح سهام معروف (در صورت عدم پوشش با پسوند X)
+            "MU/USDT", "SOXL/USDT", "SOXS/USDT", "TSLA/USDT", "AAPL/USDT",
             "GOOGL/USDT", "AMZN/USDT", "MSFT/USDT", "NFLX/USDT",
             "NVDA/USDT", "META/USDT", "BABA/USDT", "SPY/USDT",
             "QQQ/USDT", "AMD/USDT", "INTC/USDT", "PYPL/USDT",
@@ -70,7 +73,8 @@ class MarketData:
             "GME/USDT", "AMC/USDT", "COIN/USDT", "SNAP/USDT",
             "TWTR/USDT", "UBER/USDT", "LYFT/USDT", "ZM/USDT",
             "CXMT/USDT", "SKHYNIX/USDT", "SNDK/USDT",
-            "QQQX/USDT", "DRAM/USDT",  # ← مواردی که قبلاً گزارش شده‌اند
+            "QQQX/USDT", "DRAM/USDT", "MRVL/USDT", "SAMSUNG/USDT",
+            "BANK/USDT", "CAP/USDT", "US/USDT",
         ]
 
         for symbol, market in markets.items():
@@ -86,7 +90,7 @@ class MarketData:
             if not market.get("active", False):
                 continue
 
-            # بررسی وضعیت معاملاتی از info (مخصوص Gate.io)
+            # بررسی وضعیت معاملاتی
             info = market.get("info", {})
             if info:
                 trade_status = info.get("trade_status", "").lower()
@@ -95,6 +99,10 @@ class MarketData:
 
             # حذف بر اساس الگوهای ممنوعه
             name_upper = symbol.upper()
+            # بررسی ویژه برای پسوند X (سهام)
+            if name_upper.endswith("X/USDT") or name_upper.endswith("X:USDT"):
+                continue
+
             if any(pattern.upper() in name_upper for pattern in EXCLUDE_PATTERNS):
                 continue
 
