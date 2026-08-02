@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v1.0
+Crypto AI Bot v1.1
 Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input%)
 """
 
