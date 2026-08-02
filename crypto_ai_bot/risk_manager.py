@@ -37,6 +37,16 @@ class RiskManager:
 
     @staticmethod
     def suggest_leverage(entry, stop_loss, side, max_leverage=MAX_LEVERAGE):
+        """
+        محاسبهٔ اهرم طبق ریسک ۱٪ و درصد حد ضرر.
+
+        اگر حد ضرر کمتر از ۱٪ باشد:
+            Leverage = (1% / stop_loss%) → اهرم افزایش می‌یابد، Input% ثابت ۱۰۰٪.
+            مثال: حد ضرر ۰.۵٪ → Leverage = 2
+
+        اگر حد ضرر ≥ ۱٪ باشد:
+            Leverage = 1 (ثابت)
+        """
         if entry <= 0:
             return 1
         if side in ("buy", "long"):
@@ -47,6 +57,11 @@ class RiskManager:
             return 1
         stop_loss_pct = sl_distance / entry
         if stop_loss_pct == 0:
-            return max_leverage
-        leverage = RISK_PER_TRADE / stop_loss_pct
-        return min(max_leverage, max(1, int(leverage)))
+            return 1
+        if stop_loss_pct < RISK_PER_TRADE:
+            # حد ضرر کمتر از ۱٪ → Leverage افزایش می‌یابد
+            leverage = RISK_PER_TRADE / stop_loss_pct
+            return min(max_leverage, max(1, int(leverage)))
+        else:
+            # حد ضرر ≥ ۱٪ → Leverage ثابت ۱
+            return 1
