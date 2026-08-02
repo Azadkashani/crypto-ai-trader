@@ -71,11 +71,10 @@ class MarketScanner:
         if ENABLE_NEWS_ENGINE:
             all_raw_news = NewsEngine.fetch_news()
             analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
-            # افزودن currencies به هر خبر
             for news in analyzed_news:
                 news["currencies"] = NewsMapping.get_related_symbols(news["title"])
 
-        # === Sentiment پایه (Fear & Greed) ===
+        # === Sentiment پایه ===
         sentiment_data_base = MarketSentiment.fetch_sentiment(self.data.exchange) if ENABLE_SENTIMENT_ENGINE else None
 
         # === تقویم اقتصادی و Macro Risk ===
@@ -97,7 +96,7 @@ class MarketScanner:
 
                 advanced_data = None
 
-                # === News Score برای این نماد ===
+                # === News Score ===
                 news_score_val = 0
                 sentiment_score_val = 0
                 relevant_news = []
@@ -133,7 +132,6 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # Decision Engine با ریسک ماکرو
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data, score, breakout, reasons, warnings,
@@ -152,18 +150,20 @@ class MarketScanner:
                 atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
                 support = round(df["low"].tail(50).min(), 4)
                 resistance = round(df["high"].tail(50).max(), 4)
-                entry = round(last["close"], 4)
+                # قیمت ورود دقیقاً همان close است (هیچ رَندی انجام نشود)
+                entry = float(last["close"])
 
                 if "SELL" in action:
-                    stop_loss = round(entry + (atr_val * 1.5), 4)
-                    take_profit = round(entry - (atr_val * 3), 4)
+                    stop_loss = entry + (atr_val * 1.5)
+                    take_profit = entry - (atr_val * 3)
                     side = "sell"
                 else:
-                    stop_loss = round(entry - (atr_val * 1.5), 4)
-                    take_profit = round(entry + (atr_val * 3), 4)
+                    stop_loss = entry - (atr_val * 1.5)
+                    take_profit = entry + (atr_val * 3)
                     side = "buy"
 
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
+
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
                 input_pct = round((1.0 / (sl_pct * 100)) * 100, 2) if sl_pct > 0 else 100.0
 
