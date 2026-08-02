@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v1.0
+Crypto AI Bot v1.1
 Configuration File (Signal-Only – Gate.io Futures)
 """
 
@@ -42,7 +42,7 @@ WATCH_SCORE = 50
 # ==========================
 RISK_PER_TRADE = 0.01
 MIN_RISK_REWARD = 2.0
-LEVERAGE = 50          # حداکثر اهرم مجاز (پویا)
+LEVERAGE = 50
 MAX_OPEN_TRADES = 1
 
 # ==========================
@@ -101,3 +101,8 @@ HIGH_IMPACT_WINDOW_MINUTES = 30
 
 ECONOMIC_CALENDAR_API_URL = "https://example.com/calendar"
 ECONOMIC_CALENDAR_ENABLED = False
+
+# ==========================
+# Minimum 24h Volume Filter
+# ==========================
+MIN_24H_VOLUME = 1000000   # حداقل حجم معاملات روزانه (USDT)
