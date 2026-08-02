@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v5.7
-Advanced Report Engine with News & Sentiment
+Advanced Report Engine (with Entry, SL, TP, R/R)
 """
 
 import pandas as pd
@@ -35,11 +35,11 @@ class ReportEngine:
             "Entry Quality",
             "Trade Readiness"
         ]
-        # افزودن ستون‌های News/Sentiment در صورت وجود
+        # اضافه کردن ستون‌های News/Sentiment در صورت وجود
         if "News Score" in table.columns:
-            columns.insert(columns.index("Action"), "News Score")
+            columns.insert(columns.index("Score"), "News Score")
         if "Sentiment Score" in table.columns:
-            columns.insert(columns.index("Action"), "Sentiment Score")
+            columns.insert(columns.index("Score"), "Sentiment Score")
 
         cols = [c for c in columns if c in table.columns]
         print(table[cols].to_string(index=False))
@@ -55,6 +55,14 @@ class ReportEngine:
             print(f"Entry Quality: {item.get('Entry Quality', 'N/A')}  |  Risk Level: {item.get('Summary', {}).get('Risk Level', 'N/A')}")
             if "News Score" in item:
                 print(f"News Score: {item['News Score']}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
+            
+            # نمایش نقطه ورود، حد ضرر، حد سود و R/R
+            print(f"Entry: {item.get('Entry', 'N/A')}")
+            print(f"Stop Loss: {item.get('StopLoss', 'N/A')}")
+            print(f"Take Profit: {item.get('TakeProfit', 'N/A')}")
+            # محاسبه Risk/Reward (همواره ۲)
+            print(f"Risk/Reward: 2.0")
+
             print(f"Market Bias: {item['Summary'].get('Market Bias', '')}")
             print(f"Status: {item['Summary'].get('Current Status', '')}")
             print(f"Decision Reason: {item['Summary'].get('Decision Reason', '')}")
@@ -81,6 +89,10 @@ class ReportEngine:
             print(f"\nSymbol: {item['Symbol']}")
             print(f"Action: {item['Action']}")
             print(f"Trade Readiness: {item['Trade Readiness']}")
+            print(f"Entry: {item.get('Entry', 'N/A')}")
+            print(f"Stop Loss: {item.get('StopLoss', 'N/A')}")
+            print(f"Take Profit: {item.get('TakeProfit', 'N/A')}")
+            print(f"Risk/Reward: 2.0")
             if "News Score" in item:
                 print(f"News Score: {item['News Score']}")
                 print(f"Sentiment Score: {item['Sentiment Score']}")
