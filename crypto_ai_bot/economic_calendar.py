@@ -1,17 +1,39 @@
 """
 Crypto AI Bot v1.1
-Economic Calendar – simulated high-impact events
+Economic Calendar – safe mock (events are in the past, will not block trades)
 """
 
-from datetime import datetime, timedelta
+from config import ENABLE_ECONOMIC_CALENDAR
 
 class EconomicCalendar:
     @staticmethod
     def fetch_events():
-        now = datetime.utcnow()
+        """
+        اگر ENABLE_ECONOMIC_CALENDAR = True باشد، رویدادهای mock بازگردانده می‌شوند.
+        این رویدادها در گذشته قرار دارند و هرگز به‌عنوان «نزدیک» شناسایی نمی‌شوند.
+        برای استفادهٔ واقعی باید یک API تقویم اقتصادی متصل شود.
+        """
+        if not ENABLE_ECONOMIC_CALENDAR:
+            return []
+
+        # این تاریخ‌ها ثابت و متعلق به گذشته هستند.
         return [
-            {"title": "FOMC Minutes", "time": (now + timedelta(minutes=45)).strftime("%Y-%m-%d %H:%M"),
-             "country": "USD", "impact": "high", "actual": None, "forecast": None, "previous": None},
-            {"title": "CPI Data", "time": (now + timedelta(minutes=90)).strftime("%Y-%m-%d %H:%M"),
-             "country": "USD", "impact": "high", "actual": None, "forecast": None, "previous": None},
+            {
+                "title": "FOMC Minutes (mock)",
+                "time": "2020-01-01 12:00",
+                "country": "USD",
+                "impact": "high",
+                "actual": None,
+                "forecast": None,
+                "previous": None
+            },
+            {
+                "title": "CPI Data (mock)",
+                "time": "2020-01-01 12:00",
+                "country": "USD",
+                "impact": "high",
+                "actual": None,
+                "forecast": None,
+                "previous": None
+            },
         ]
