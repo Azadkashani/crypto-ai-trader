@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.0
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage)
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input%)
 """
 
 from market_structure import MarketStructure
@@ -104,7 +104,6 @@ class MarketScanner:
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
                 advanced_data = None
-                # (Advanced analytics unchanged)
 
                 news_score_val = 0
                 sentiment_score_val = 0
@@ -166,8 +165,12 @@ class MarketScanner:
                     take_profit = round(entry + (atr_val * 3), 4)
                     side = "buy"
 
-                # اهرم پویا بر اساس ۱٪ ریسک و درصد حد ضرر
+                # اهرم پویا
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
+
+                # Input % (درصد سرمایهٔ پیشنهادی برای ریسک ۱٪)
+                sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
+                input_pct = round((1.0 / (sl_pct * 100)) * 100, 2) if sl_pct > 0 else 100.0
 
                 results.append({
                     "Symbol": symbol,
@@ -188,6 +191,7 @@ class MarketScanner:
                     "StopLoss": stop_loss,
                     "TakeProfit": take_profit,
                     "Leverage": suggested_leverage,
+                    "InputPct": input_pct,
                     "Volume Breakout": breakout,
                     "Reasons": ", ".join(reasons),
                     "Warnings": ", ".join(warnings),
