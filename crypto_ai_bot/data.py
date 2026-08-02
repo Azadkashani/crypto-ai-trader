@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Data Engine (Gate.io Futures – Strict Perpetual Filter)
+Market Data Engine (Gate.io Futures – Strict Perpetual Filter + Extra Clean)
 """
 
 import ccxt
@@ -14,7 +14,7 @@ class MarketData:
         if EXCHANGE_NAME.lower() == "gate":
             self.exchange = ccxt.gate({
                 "enableRateLimit": True,
-                "options": {"defaultType": "swap"}   # Perpetual Futures
+                "options": {"defaultType": "swap"}
             })
         else:
             raise Exception("Exchange Not Supported")
@@ -41,30 +41,24 @@ class MarketData:
         return data
 
     def get_usdt_symbols(self):
-        """
-        دریافت نمادهای فیوچرز دائمی USDT از Gate.io با فیلترهای سخت‌گیرانه:
-        - فقط قراردادهای فعال و قابل معامله
-        - حذف ربات‌ها، شاخص‌ها، سهام توکنیزه‌شده و ...
-        - حداقل حجم معاملات ۲۴ ساعته
-        - انتخاب ۵۰ نماد برتر بر اساس حجم
-        """
         print("Loading futures markets...")
         markets = self.exchange.load_markets()
         usdt_futures = []
 
-        # الگوهای ممنوعه (هر نمادی که شامل این کلمات باشد حذف می‌شود)
+        # الگوهای ممنوعهٔ گسترده‌تر
         EXCLUDE_PATTERNS = [
-            # ربات‌ها و استراتژی‌ها
+            # ربات‌ها، شاخص‌ها، توکن‌های مصنوعی
             "BOT", "GRID", "STRATEGY", "API", "SYNTH", "INDEX",
+            "DEX", "ALPHA",  # ← حذف DEX/BOT/Alpha
             # تست و دمو
             "TEST", "DEMO", "INTERNAL",
             # وضعیت غیرفعال
             "INACTIVE", "DELISTED", "SETTLEMENT",
             # توکن‌های اهرم‌دار و ETF
             "BEAR", "BULL", "UP", "DOWN", "ETF",
-            # سهام توکنیزه‌شده (کاملاً حذف شوند)
+            # سهام توکنیزه‌شده
             "TOKENIZED", "STOCK", "EQUITY", "SHARE",
-            # لیست صریح سهام معروف در Gate.io
+            # لیست صریح سهام و نمادهای غیرفیوچرز
             "MU/USDT", "SOXL/USDT", "TSLA/USDT", "AAPL/USDT",
             "GOOGL/USDT", "AMZN/USDT", "MSFT/USDT", "NFLX/USDT",
             "NVDA/USDT", "META/USDT", "BABA/USDT", "SPY/USDT",
@@ -72,33 +66,29 @@ class MarketData:
             "DIS/USDT", "V/USDT", "MA/USDT", "JPM/USDT",
             "GME/USDT", "AMC/USDT", "COIN/USDT", "SNAP/USDT",
             "TWTR/USDT", "UBER/USDT", "LYFT/USDT", "ZM/USDT",
-            # سایر نمادهای غیرفیوچرز
             "CXMT/USDT", "SKHYNIX/USDT", "SNDK/USDT",
+            # موارد جدید که گزارش شده‌اند
+            "QQQX/USDT",          # ← حذف مستقیم
         ]
 
         for symbol, market in markets.items():
-            # فقط فیوچرز دائمی خطی با پایه USDT
+            # فقط فیوچرز دائمی خطی USDT
             if not (market.get("active", False) and
                     market.get("swap", False) and
                     market.get("linear", False) and
                     market.get("quote") == "USDT"):
                 continue
 
-            # بررسی وضعیت معاملاتی از info
+            # بررسی وضعیت معاملاتی
             info = market.get("info", {})
             if info:
                 trade_status = info.get("trade_status", "").lower()
                 if trade_status not in ("tradable", ""):
                     continue
 
-            # بررسی الگوهای ممنوعه
+            # حذف بر اساس الگوها
             name_upper = symbol.upper()
-            excluded = False
-            for pattern in EXCLUDE_PATTERNS:
-                if pattern.upper() in name_upper:
-                    excluded = True
-                    break
-            if excluded:
+            if any(pattern in name_upper for pattern in EXCLUDE_PATTERNS):
                 continue
 
             usdt_futures.append(symbol)
@@ -114,7 +104,6 @@ class MarketData:
             tickers = self.exchange.fetch_tickers(usdt_futures)
         except Exception as e:
             print(f"Error fetching tickers: {e}")
-            # در صورت خطا، همان لیست فیلترشده (حداکثر ۵۰ تای اول الفبایی) را برگردان
             return sorted(usdt_futures)[:50]
 
         symbol_volumes = []
