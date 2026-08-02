@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Professional Decision Engine (Balanced – Smart Action + Truly Dynamic Readiness)
+Professional Decision Engine (Balanced – Smart Action + Truly Dynamic Readiness v2)
 """
 
 from weights import WARNING_WEIGHTS
@@ -43,59 +43,68 @@ class DecisionEngine:
         if risk_event: conf -= 15
         conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness (کاملاً پویا) ----
-        readiness = 30
+        # ---- Trade Readiness (کاملاً پویا و سخت‌گیرانه) ----
+        readiness = 20   # پایهٔ پایین‌تر
 
+        # روند
         if trend == "bullish":
-            readiness += 25
+            readiness += 15
         elif trend == "bearish":
-            readiness -= 25
+            readiness -= 30
         else:
-            readiness -= 10
+            readiness -= 15
 
-        if strength == "Very Strong": readiness += 20
-        elif strength == "Strong": readiness += 15
-        elif strength == "Medium": readiness += 5
+        # قدرت روند
+        if strength == "Very Strong": readiness += 10
+        elif strength == "Strong": readiness += 7
+        elif strength == "Medium": readiness += 3
         else: readiness -= 10
 
-        if mtf_signal == "Strong Bullish": readiness += 20
-        elif mtf_signal == "Bullish": readiness += 10
+        # هم‌جهتی MTF
+        if mtf_signal == "Strong Bullish": readiness += 10
+        elif mtf_signal == "Bullish": readiness += 5
         elif mtf_signal == "Bearish": readiness -= 10
         elif mtf_signal == "Strong Bearish": readiness -= 20
 
+        # BOS
         if last_bos:
-            readiness += 15
+            readiness += 10
         else:
             readiness -= 10
 
+        # CHoCH مخالف
         if opposing_choch:
-            readiness -= 25
+            readiness -= 20
 
+        # حجم (تأثیر قوی‌تر)
         if vol_z > 0.5:
-            readiness += 15
+            readiness += 10
         elif vol_z < -0.5:
-            readiness -= 10
+            readiness -= 15
         else:
-            readiness -= 5
+            readiness -= 5   # حجم معمولی جریمه دارد
 
+        # شکست
         if breakout:
-            readiness += 20
+            readiness += 10
 
+        # News & Sentiment (تأثیر واقعی)
         if news_score > 0:
-            readiness += int(news_score * 2)
+            readiness += min(int(news_score * 2), 10)
         elif news_score < -5:
             readiness -= 15
 
         if sentiment_score > 0:
-            readiness += int(sentiment_score * 2)
+            readiness += min(int(sentiment_score * 2), 10)
         elif sentiment_score < -5:
             readiness -= 10
 
+        # Macro Risk
         if risk_event:
             readiness -= 30
 
-        # تأثیر Score تکنیکال (محدود)
-        readiness += min(score // 3, 15)   # حداکثر ۱۵ امتیاز از Score
+        # سهم امتیاز تکنیکال (کاهش یافته)
+        readiness += min(score // 5, 10)   # حداکثر ۱۰ امتیاز از Score
 
         readiness = max(0, min(100, readiness))
 
@@ -114,10 +123,10 @@ class DecisionEngine:
             action = "WATCH"
             decision_reason = "Blocked by: " + ", ".join(critical_rejections)
         elif trend == "bullish":
-            if readiness >= 80 and conf >= 65:
+            if readiness >= 70 and conf >= 65:
                 action = "STRONG BUY"
                 decision_reason = "All conditions aligned strongly."
-            elif readiness >= 65 and conf >= 50:
+            elif readiness >= 55 and conf >= 50:
                 action = "BUY"
                 decision_reason = "Good setup with sufficient confirmation."
             else:
@@ -134,6 +143,7 @@ class DecisionEngine:
             "Missing": [],
             "Risk Level": "Medium"
         }
+        print(f"[DecisionEngine v2.0] {trend} | Readiness={readiness} | Conf={conf}")   # تأیید نسخه
         return {
             "action": action,
             "confidence": conf,
