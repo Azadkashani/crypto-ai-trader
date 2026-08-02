@@ -1,21 +1,20 @@
 """
 Crypto AI Bot v1.0
-Configuration File (Signal-Only – Gate.io)
+Configuration File (Signal-Only – Gate.io Futures)
 """
 
 # ==========================
 # Exchange Settings
 # ==========================
 EXCHANGE_NAME = "gate"
-API_KEY = ""          # برای دریافت داده‌های عمومی نیازی به کلید نیست
-API_SECRET = ""       # (در صورت نیاز به داده‌های خصوصی، کلیدهای خود را وارد کنید)
-TESTNET = False       # از بازار واقعی Gate.io داده می‌گیریم
-# API_BASE_URL برای Gate.io نیاز نیست (ccxt خودش آدرس‌ها را می‌داند)
+API_KEY = ""
+API_SECRET = ""
+TESTNET = False
 
 # ==========================
 # Trading Settings
 # ==========================
-SYMBOLS = []                # خالی = دریافت از صرافی
+SYMBOLS = []
 USE_ALL_MARKETS = True
 MAX_SYMBOLS = 50
 TOP_RESULTS = 5
@@ -39,11 +38,11 @@ BUY_SCORE = 75
 WATCH_SCORE = 50
 
 # ==========================
-# Risk Management (فقط برای نمایش)
+# Risk Management (Futures)
 # ==========================
 RISK_PER_TRADE = 0.01
 MIN_RISK_REWARD = 2.0
-LEVERAGE = 5
+LEVERAGE = 50          # حداکثر اهرم مجاز (پویا)
 MAX_OPEN_TRADES = 1
 
 # ==========================
