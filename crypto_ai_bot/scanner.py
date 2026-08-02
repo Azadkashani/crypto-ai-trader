@@ -1,54 +1,36 @@
 """
 Crypto AI Bot v1.1
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input%)
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Real News/Sentiment)
 """
 
 from market_structure import MarketStructure
 from config import (
-    SYMBOLS,
-    USE_ALL_MARKETS,
-    MAX_SYMBOLS,
-    TOP_RESULTS,
-    ENABLE_LIQUIDITY_SWEEP,
-    ENABLE_FVG,
-    ENABLE_ORDER_BLOCK,
-    ENABLE_PREMIUM_DISCOUNT,
-    ENABLE_VOLUME_PROFILE,
-    ENABLE_VWAP,
-    ENABLE_OPEN_INTEREST,
-    ENABLE_FUNDING_RATE,
-    ENABLE_ATR_VOLATILITY,
-    ENABLE_EMA_SLOPE,
-    ENABLE_RSI_DIVERGENCE,
-    ENABLE_MACD_DIVERGENCE,
-    ENABLE_CANDLESTICK_PATTERNS,
-    ENABLE_SR_STRENGTH,
-    ENABLE_BREAKOUT_QUALITY,
-    ENABLE_TRENDLINE_BREAK,
-    ENABLE_FIBONACCI,
-    ENABLE_SESSION_DETECTION,
-    ENABLE_MARKET_REGIME,
-    ENABLE_CORRELATION_FILTER,
-    ENABLE_NEWS_ENGINE,
-    ENABLE_SENTIMENT_ENGINE,
+    SYMBOLS, USE_ALL_MARKETS, MAX_SYMBOLS, TOP_RESULTS,
+    ENABLE_LIQUIDITY_SWEEP, ENABLE_FVG, ENABLE_ORDER_BLOCK, ENABLE_PREMIUM_DISCOUNT,
+    ENABLE_VOLUME_PROFILE, ENABLE_VWAP, ENABLE_OPEN_INTEREST, ENABLE_FUNDING_RATE,
+    ENABLE_ATR_VOLATILITY, ENABLE_EMA_SLOPE, ENABLE_RSI_DIVERGENCE, ENABLE_MACD_DIVERGENCE,
+    ENABLE_CANDLESTICK_PATTERNS, ENABLE_SR_STRENGTH, ENABLE_BREAKOUT_QUALITY,
+    ENABLE_TRENDLINE_BREAK, ENABLE_FIBONACCI, ENABLE_SESSION_DETECTION,
+    ENABLE_MARKET_REGIME, ENABLE_CORRELATION_FILTER,
+    ENABLE_NEWS_ENGINE, ENABLE_SENTIMENT_ENGINE, ENABLE_ECONOMIC_CALENDAR,
 )
-
 from data import MarketData
 from indicators import IndicatorEngine
 from trend import TrendEngine
 from scoring import ScoringEngine
 from decision_engine import DecisionEngine
 from risk_manager import RiskManager
-
 from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
 
-# News & Sentiment
+# News & Sentiment imports
 from news_engine import NewsEngine
 from news_analyzer import NewsAnalyzer
 from news_mapping import NewsMapping
 from market_sentiment import MarketSentiment
 from news_scoring import NewsScoring
+from economic_calendar import EconomicCalendar
+from risk_events import RiskEvents
 
 
 class MarketScanner:
@@ -83,20 +65,22 @@ class MarketScanner:
         symbols = self.get_symbols()
         print(f"Scanning {len(symbols)} symbols...\n")
 
+        # === دریافت اخبار و تحلیل اولیه ===
         all_raw_news = []
+        analyzed_news = []
         if ENABLE_NEWS_ENGINE:
             all_raw_news = NewsEngine.fetch_news()
-            # تحلیل اخبار یکبار برای همه
             analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
             # افزودن currencies به هر خبر
             for news in analyzed_news:
                 news["currencies"] = NewsMapping.get_related_symbols(news["title"])
-        else:
-            analyzed_news = []
 
-        sentiment_data = None
-        if ENABLE_SENTIMENT_ENGINE:
-            sentiment_data = MarketSentiment.fetch_sentiment(self.data.exchange)
+        # === Sentiment پایه (Fear & Greed) ===
+        sentiment_data_base = MarketSentiment.fetch_sentiment(self.data.exchange) if ENABLE_SENTIMENT_ENGINE else None
+
+        # === تقویم اقتصادی و Macro Risk ===
+        calendar_events = EconomicCalendar.fetch_events() if ENABLE_ECONOMIC_CALENDAR else []
+        macro_risk_active, macro_event = RiskEvents.is_high_impact_near(calendar_events)
 
         for symbol in symbols:
             try:
@@ -113,26 +97,26 @@ class MarketScanner:
 
                 advanced_data = None
 
+                # === News Score برای این نماد ===
                 news_score_val = 0
                 sentiment_score_val = 0
-                macro_news = {"bias": "Neutral", "impact": 0}
+                relevant_news = []
                 if ENABLE_NEWS_ENGINE:
-                    # فیلتر اخبار مرتبط
-                    related_news = [n for n in analyzed_news if NewsMapping.get_related_symbols(n["title"])]
+                    sentiment_data = MarketSentiment.fetch_sentiment(self.data.exchange, symbol) if ENABLE_SENTIMENT_ENGINE else sentiment_data_base
+                    base_coin = symbol.split("/")[0]
+                    related_news = []
+                    for news in analyzed_news:
+                        currencies = news.get("currencies", [])
+                        if base_coin in currencies or "MARKET" in currencies:
+                            related_news.append(news)
                     scores = NewsScoring.calculate(related_news, sentiment_data, symbol)
                     news_score_val = scores["news_score"]
                     sentiment_score_val = scores["sentiment_score"]
-                    # Macro News summary
-                    if news_score_val > 0:
-                        macro_news = {"bias": "Bullish", "impact": news_score_val}
-                    elif news_score_val < 0:
-                        macro_news = {"bias": "Bearish", "impact": news_score_val}
-                    else:
-                        macro_news = {"bias": "Neutral", "impact": 0}
+                    relevant_news = related_news
 
+                # === Scoring و Decision ===
                 analysis = ScoringEngine.calculate(
-                    df,
-                    mtf_signal,
+                    df, mtf_signal,
                     market_structure=market_structure,
                     strength=strength,
                     advanced_data=advanced_data,
@@ -149,10 +133,13 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
+                # Decision Engine با ریسک ماکرو
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data, score, breakout, reasons, warnings,
-                    risk_event=False
+                    risk_event=macro_risk_active,
+                    news_score=news_score_val,
+                    sentiment_score=sentiment_score_val,
                 )
 
                 action = decision["action"]
@@ -177,7 +164,6 @@ class MarketScanner:
                     side = "buy"
 
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
-
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
                 input_pct = round((1.0 / (sl_pct * 100)) * 100, 2) if sl_pct > 0 else 100.0
 
@@ -211,7 +197,9 @@ class MarketScanner:
                     "Trade Readiness": trade_readiness,
                     "News Score": news_score_val,
                     "Sentiment Score": sentiment_score_val,
-                    "Macro News": macro_news,
+                    "Macro Risk": macro_risk_active,
+                    "Macro Event": macro_event["title"] if macro_risk_active else None,
+                    "Relevant News": relevant_news,
                     "advanced": advanced_data
                 })
 
