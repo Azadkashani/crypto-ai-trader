@@ -1,6 +1,7 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – dynamic SL, multi‑TP, probability scoring, safe extraction
+Institutional‑Grade Trade Planner – dynamic SL, multi‑TP, probability scoring, safe extraction,
+targets sorted by distance to entry (nearest first)
 """
 
 import numpy as np
@@ -25,10 +26,10 @@ class TradePlanner:
         # 1. محاسبهٔ حد ضرر (فقط یک بار)
         sl = self._calculate_stop_loss(side, entry_price, atr, market_structure, advanced_data)
 
-        # 2. اهداف
+        # 2. اهداف (با مرتب‌سازی)
         targets = self._calculate_targets(side, entry_price, atr, sl, market_structure, advanced_data)
 
-        # 3. ریسک و ریوارد (بر اساس اولین هدفی که R:R ≥ min_rr دارد)
+        # 3. اعتبارسنجی بر اساس نزدیکترین هدف (TP1)
         valid = False
         rr = 0.0
         reward = 0.0
@@ -36,19 +37,25 @@ class TradePlanner:
         if risk == 0:
             return self._invalid_plan(entry_price, sl, "Risk is zero.")
 
-        selected_tp = None
+        # بررسی تمام اهداف: اگر حداقل یکی R:R ≥ min_rr داشت، معتبر است.
+        # اما برای نمایش TP1 (نزدیکترین) را به عنوان TP1 و برای محاسبه reward و rr نهایی استفاده می‌کنیم.
+        tp1 = targets[0]["price"] if targets else None
+        if tp1 is None:
+            return self._invalid_plan(entry_price, sl, "No valid target found.")
+
+        # ابتدا تمام اهداف را از نظر R:R و probability بررسی می‌کنیم (برای نمایش در خروجی)
         for t in targets:
             t_rr = abs(t["price"] - entry_price) / risk
             t["rr"] = round(t_rr, 2)
             if t_rr >= self.min_rr and t["probability"] >= 0.3:
-                valid = True
-                reward = abs(t["price"] - entry_price)
-                rr = t_rr
-                selected_tp = t
-                break   # اولین هدف معتبر
+                # معتبر است (برای حداقل یک هدف)
+                if not valid:
+                    # اولین هدف معتبر (معمولاً TP1) reward و rr را تعیین می‌کند
+                    valid = True
+                    reward = abs(t["price"] - entry_price)
+                    rr = t_rr
 
         if not valid:
-            # اگر هیچ هدفی معتبر نبود، معامله نامعتبر است
             return {
                 "entry": entry_price,
                 "stop_loss": round(sl, 4),
@@ -191,21 +198,41 @@ class TradePlanner:
             best = max(cl["members"], key=lambda x: x.get("quality", 0.5))
             cl["price"] = self._safe_float(best["price"])
 
+        # انتخاب حداکثر max_targets خوشه با بالاترین امتیاز
         clusters.sort(key=lambda x: x["score"], reverse=True)
+        chosen = clusters[:self.max_targets]
+
         targets = []
-        for i, cl in enumerate(clusters[:self.max_targets]):
+        for cl in chosen:
             prob = self._estimate_probability(cl, side, entry, atr, ms)
-            tp_rr = abs(cl["price"] - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 0
+            # RR موقتاً بدون sl دقیق (در plan محاسبه می‌شود)
             targets.append({
                 "price": round(cl["price"], 4),
                 "pct": round((cl["price"] / entry - 1) * 100, 2) if side == "buy"
                        else round((entry / cl["price"] - 1) * 100, 2),
-                "rr": round(tp_rr, 2),
+                "rr": 0.0,  # بعداً در plan پر می‌شود
                 "probability": round(prob, 2),
-                "label": f"TP{i+1}"
+                "label": ""  # بعداً پر می‌شود
             })
+
+        # اگر هیچ هدفی نبود، fallback
         if not targets:
             targets = [self._atr_target(side, entry, atr, sl, emergency=True)]
+            # مرتب‌سازی لازم نیست چون یک هدف بیشتر نیست
+            return targets
+
+        # ===== مرتب‌سازی بر اساس نزدیکی به Entry =====
+        if side == "buy":
+            # خرید: نزدیکترین مقاومت (کوچکترین قیمت بالای Entry) اول
+            targets.sort(key=lambda x: x["price"])
+        else:
+            # فروش: نزدیکترین حمایت (بزرگترین قیمت زیر Entry) اول
+            targets.sort(key=lambda x: x["price"], reverse=True)
+
+        # بازنویسی labelها
+        for i, t in enumerate(targets):
+            t["label"] = f"TP{i+1}"
+
         return targets
 
     def _gather_tp_candidates(self, side, entry, ms, adv):
