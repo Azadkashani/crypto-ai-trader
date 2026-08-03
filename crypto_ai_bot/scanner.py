@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Enhanced Fundamental Analysis)
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Enhanced Fundamental Analysis + Trade Planner)
 """
 
 from market_structure import MarketStructure
@@ -14,6 +14,7 @@ from config import (
     ENABLE_MARKET_REGIME, ENABLE_CORRELATION_FILTER,
     ENABLE_NEWS_ENGINE, ENABLE_SENTIMENT_ENGINE, ENABLE_ECONOMIC_CALENDAR,
 )
+import config as cfg
 from data import MarketData
 from indicators import IndicatorEngine
 from trend import TrendEngine
@@ -22,6 +23,7 @@ from decision_engine import DecisionEngine
 from risk_manager import RiskManager
 from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
+from trade_planner import TradePlanner
 
 # News & Sentiment imports
 from news_engine import NewsEngine
@@ -41,6 +43,7 @@ class MarketScanner:
     def __init__(self):
         self.data = MarketData()
         self.advanced = AdvancedAnalytics(data_engine=self.data)
+        self.planner = TradePlanner(cfg)
 
     def get_symbols(self):
         if USE_ALL_MARKETS:
@@ -75,11 +78,9 @@ class MarketScanner:
         if ENABLE_NEWS_ENGINE:
             all_raw_news = NewsEngine.fetch_news()
             analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
-            # افزودن assets به هر خبر با NewsMapping جدید (v1.2)
             for news in analyzed_news:
                 news["assets"] = NewsMapping.get_related_assets(news["title"])
 
-        # Global sentiment (یک بار برای همه)
         global_sentiment = MarketSentiment.fetch_global_sentiment() if ENABLE_SENTIMENT_ENGINE else None
 
         calendar_events = EconomicCalendar.fetch_events() if ENABLE_ECONOMIC_CALENDAR else []
@@ -95,7 +96,7 @@ class MarketScanner:
                     volume_24h = 0
 
                 if volume_24h < MIN_24H_VOLUME:
-                    continue   # رد کردن نمادهای کم‌حجم
+                    continue
 
                 df = self.data.get_ohlcv(symbol)
                 df = IndicatorEngine.calculate(df)
@@ -108,16 +109,14 @@ class MarketScanner:
 
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
-                # === Advanced Analytics واقعی ===
                 advanced_data = self.advanced.analyze(df, market_structure, symbol)
 
-                # === News Score (v1.2: per-symbol with multi-level weighting) ===
+                # === News Score ===
                 news_score_val = 0
                 sentiment_score_val = 0
                 relevant_news = []
                 asset_sentiment = {}
                 if ENABLE_NEWS_ENGINE:
-                    # Asset sentiment مخصوص این نماد
                     asset_sentiment = MarketSentiment.fetch_asset_sentiment(self.data.exchange, symbol) if ENABLE_SENTIMENT_ENGINE else {}
                     base_coin = symbol.split("/")[0]
                     related_news = []
@@ -132,7 +131,6 @@ class MarketScanner:
                     sentiment_score_val = scores["sentiment_score"]
                     relevant_news = related_news
 
-                # === Scoring (همان نسخه متقارن v1.1) ===
                 analysis = ScoringEngine.calculate(
                     df, mtf_signal,
                     market_structure=market_structure,
@@ -151,7 +149,7 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # === Decision (مقایسه buy_score / sell_score) ===
+                # ===== Decision (فقط برای تعیین جهت اولیه) =====
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data,
@@ -177,21 +175,26 @@ class MarketScanner:
                 resistance = round(df["high"].tail(50).max(), 4)
                 entry = float(last["close"])
 
-                # ----- محاسبه SL و TP -----
-                if "SELL" in action:
-                    stop_loss = entry + (atr_val * 1.5)
-                    side = "sell"
+                # ===== Trade Planner =====
+                if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+                    plan = self.planner.plan(df, market_structure, advanced_data, action, entry)
+                    if not plan["valid"]:
+                        action = "WATCH"
+                        summary["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
+                        summary["Decision Reason"] = summary["Current Status"]
+                    stop_loss = plan["stop_loss"]
+                    tp1 = plan["targets"][0]["price"] if plan["targets"] else entry + (atr_val * 3)
+                    targets = plan["targets"]
+                    rr = plan["rr"]
                 else:
-                    stop_loss = entry - (atr_val * 1.5)
-                    side = "buy"
-
-                if side == "sell":
-                    tp1 = entry - (atr_val * 3)
-                else:
-                    tp1 = entry + (atr_val * 3)
+                    # در صورت WATCH یا NO TRADE از ATR ساده استفاده می‌کنیم (فقط برای نمایش)
+                    stop_loss = entry - (atr_val * 1.5) if "SELL" not in action else entry + (atr_val * 1.5)
+                    tp1 = entry + (atr_val * 3) if "SELL" not in action else entry - (atr_val * 3)
+                    targets = []
+                    rr = 0
 
                 # اهرم پویا و Input%
-                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
+                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, "sell" if "SELL" in action else "buy")
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
                 if sl_pct < 0.01:
                     input_pct = 100.0
@@ -216,6 +219,8 @@ class MarketScanner:
                     "Entry": entry,
                     "StopLoss": stop_loss,
                     "TP1": tp1,
+                    "Targets": targets,
+                    "RiskReward": round(rr, 2),
                     "Leverage": suggested_leverage,
                     "InputPct": input_pct,
                     "VolumeUSDT": round(volume_24h, 2),
