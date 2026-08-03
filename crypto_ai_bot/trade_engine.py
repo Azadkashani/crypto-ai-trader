@@ -1,6 +1,6 @@
 """
-Crypto AI Bot v1.1
-Trade Engine – Realistic trailing stop, correct pnl_pct
+Crypto AI Bot
+Trade Engine – Simulates trade entry/exit, trailing stop, and position management
 """
 
 import pandas as pd
@@ -14,7 +14,6 @@ class Trade:
         self.side = side
         self.entry_time = entry_time
         self.entry_price = entry_price
-        self.initial_stop_loss = stop_loss
         self.stop_loss = stop_loss
         self.take_profit = take_profit
         self.quantity = quantity
@@ -25,9 +24,10 @@ class Trade:
         self.pnl_pct = 0.0
         self.holding_bars = 0
 
-        # متغیرهای تریلینگ
-        self.trailing_activated = False
-        self.trailing_extreme = entry_price   # برای buy: highest high; for sell: lowest low
+        # وضعیت Trailing Stop واقعی
+        self.best_price = entry_price
+        self.trailing_active = False
+        self.initial_risk = abs(entry_price - stop_loss)
 
         # metadata
         self.score = score
@@ -48,8 +48,9 @@ class Trade:
             self.pnl_pct = (exit_price / self.entry_price - 1) * 100
         else:
             self.pnl = (self.entry_price - exit_price) * self.quantity
+            # فرمول قبلی از exit_price به‌عنوان مبنا استفاده می‌کرد که با فرمول side=="buy" ناسازگار بود.
             self.pnl_pct = (self.entry_price - exit_price) / self.entry_price * 100
-        self.holding_bars = (exit_time - self.entry_time).total_seconds() / 3600
+        self.holding_bars = (exit_time - self.entry_time).total_seconds() / 3600  # hours
 
 
 class TradeEngine:
@@ -66,6 +67,7 @@ class TradeEngine:
 
     def open_trade(self, symbol, side, entry_time, entry_price, stop_loss, take_profit,
                    quantity, **metadata):
+        # کسر کارمزد ورود
         entry_fee = entry_price * quantity * self.portfolio.fee
         self.portfolio.capital -= entry_fee
 
@@ -74,6 +76,7 @@ class TradeEngine:
         self.open_trades[symbol] = trade
 
     def update(self, current_time, data_dict, indicators_dict, market_structures):
+        """بررسی خروج پوزیشن‌های باز بر اساس کندل جاری"""
         for sym, trade in list(self.open_trades.items()):
             df = data_dict[sym]
             row = df[df['time'] == current_time]
@@ -84,7 +87,6 @@ class TradeEngine:
             low = candle["low"]
             close = candle["close"]
 
-            # بررسی خروج‌های ثابت
             exit_reason = None
             exit_price = None
 
@@ -93,7 +95,7 @@ class TradeEngine:
                 if low <= trade.stop_loss:
                     exit_reason = "Stop Loss"
                     exit_price = trade.stop_loss
-            else:
+            else:  # sell
                 if high >= trade.stop_loss:
                     exit_reason = "Stop Loss"
                     exit_price = trade.stop_loss
@@ -109,33 +111,25 @@ class TradeEngine:
                         exit_reason = "Take Profit"
                         exit_price = trade.take_profit
 
-            # 3. Trailing Stop پویا
+            # 3. Trailing Stop واقعی (قبلاً فقط یک‌بار به Breakeven می‌پرید و دیگر دنبال قیمت نمی‌رفت)
             if self.trailing_stop_enabled and exit_reason is None:
                 if trade.side == "buy":
-                    # فعال‌سازی تریلینگ
-                    if not trade.trailing_activated:
-                        if close >= trade.entry_price + self.trailing_activation * (trade.take_profit - trade.entry_price):
-                            trade.trailing_activated = True
-                            trade.trailing_extreme = high   # شروع از بالاترین قیمت
-                    if trade.trailing_activated:
-                        # به‌روزرسانی بالاترین قیمت
-                        trade.trailing_extreme = max(trade.trailing_extreme, high)
-                        # فاصله‌ی ثابت اولیه
-                        offset = trade.entry_price - trade.initial_stop_loss
-                        new_sl = trade.trailing_extreme - offset
-                        if new_sl > trade.stop_loss:   # فقط افزایش
-                            trade.stop_loss = new_sl
+                    trade.best_price = max(trade.best_price, high)
+                    activation_level = trade.entry_price + self.trailing_activation * (trade.take_profit - trade.entry_price)
+                    if close >= activation_level:
+                        trade.trailing_active = True
+                    if trade.trailing_active:
+                        trailing_sl = trade.best_price - trade.initial_risk
+                        # حد ضرر فقط در جهت سودآور حرکت می‌کند و هیچ‌وقت عقب نمی‌رود
+                        trade.stop_loss = max(trade.stop_loss, trailing_sl, trade.entry_price)
                 else:  # sell
-                    if not trade.trailing_activated:
-                        if close <= trade.entry_price - self.trailing_activation * (trade.entry_price - trade.take_profit):
-                            trade.trailing_activated = True
-                            trade.trailing_extreme = low
-                    if trade.trailing_activated:
-                        trade.trailing_extreme = min(trade.trailing_extreme, low)
-                        offset = trade.initial_stop_loss - trade.entry_price
-                        new_sl = trade.trailing_extreme + offset
-                        if new_sl < trade.stop_loss:   # فقط کاهش
-                            trade.stop_loss = new_sl
+                    trade.best_price = min(trade.best_price, low)
+                    activation_level = trade.entry_price - self.trailing_activation * (trade.entry_price - trade.take_profit)
+                    if close <= activation_level:
+                        trade.trailing_active = True
+                    if trade.trailing_active:
+                        trailing_sl = trade.best_price + trade.initial_risk
+                        trade.stop_loss = min(trade.stop_loss, trailing_sl, trade.entry_price)
 
             # 4. Max Holding Bars
             if exit_reason is None:
@@ -144,16 +138,18 @@ class TradeEngine:
                     exit_reason = "Max Holding Time"
                     exit_price = close
 
-            # 5. Reverse Signal (غیرفعال)
+            # 5. Reverse Signal (اختیاری – فعلاً پیاده‌سازی نشده)
 
             if exit_reason:
                 trade.update_exit(current_time, exit_price, exit_reason)
+                # کارمزد خروج
                 exit_fee = exit_price * trade.quantity * self.portfolio.fee
                 self.portfolio.capital += trade.pnl - exit_fee
                 self.closed_trades.append(trade)
                 del self.open_trades[sym]
 
     def close_all(self, final_time, data_dict):
+        """بستن تمام معاملات باز در پایان بک‌تست"""
         for sym, trade in self.open_trades.items():
             df = data_dict[sym]
             last_price = df.iloc[-1]["close"]
@@ -164,6 +160,7 @@ class TradeEngine:
         self.open_trades.clear()
 
     def calculate_unrealized_pnl(self, symbol, current_time, df):
+        """محاسبه PnL تحقق‌نیافته (برای equity curve)"""
         if symbol not in self.open_trades:
             return 0.0
         trade = self.open_trades[symbol]
