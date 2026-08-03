@@ -1,11 +1,11 @@
 """
 Crypto AI Bot v1.1
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Volume)
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Volume Filter)
 """
 
 from market_structure import MarketStructure
 from config import (
-    SYMBOLS, USE_ALL_MARKETS, MAX_SYMBOLS, TOP_RESULTS,
+    SYMBOLS, USE_ALL_MARKETS, MAX_SYMBOLS, TOP_RESULTS, MIN_24H_VOLUME,
     ENABLE_LIQUIDITY_SWEEP, ENABLE_FVG, ENABLE_ORDER_BLOCK, ENABLE_PREMIUM_DISCOUNT,
     ENABLE_VOLUME_PROFILE, ENABLE_VWAP, ENABLE_OPEN_INTEREST, ENABLE_FUNDING_RATE,
     ENABLE_ATR_VOLATILITY, ENABLE_EMA_SLOPE, ENABLE_RSI_DIVERGENCE, ENABLE_MACD_DIVERGENCE,
@@ -85,6 +85,16 @@ class MarketScanner:
 
         for symbol in symbols:
             try:
+                # === دریافت حجم ۲۴ ساعته و فیلتر حجم ===
+                try:
+                    ticker = self.data.exchange.fetch_ticker(symbol)
+                    volume_24h = ticker.get("quoteVolume", 0) or 0
+                except Exception:
+                    volume_24h = 0
+
+                if volume_24h < MIN_24H_VOLUME:
+                    continue   # رد کردن نمادهای کم‌حجم
+
                 df = self.data.get_ohlcv(symbol)
                 df = IndicatorEngine.calculate(df)
 
@@ -98,13 +108,6 @@ class MarketScanner:
 
                 # === Advanced Analytics واقعی ===
                 advanced_data = self.advanced.analyze(df, market_structure, symbol)
-
-                # === حجم ۲۴ ساعته (USDT) ===
-                try:
-                    ticker = self.data.exchange.fetch_ticker(symbol)
-                    volume_24h = ticker.get("quoteVolume", 0) or 0
-                except Exception:
-                    volume_24h = 0
 
                 # === News Score ===
                 news_score_val = 0
