@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Configuration File (Signal-Only – Gate.io Futures)
+Configuration File (Signal-Only – Corrected 50 Futures Symbols)
 """
 
 # ==========================
@@ -10,13 +10,63 @@ EXCHANGE_NAME = "gate"
 API_KEY = ""
 API_SECRET = ""
 TESTNET = False
-API_BASE_URL = "https://testnet.binancefuture.com"  # فقط برای order_manager.py در حالت TESTNET Binance
 
 # ==========================
 # Trading Settings
 # ==========================
-SYMBOLS = []
-USE_ALL_MARKETS = True
+USE_ALL_MARKETS = False          # ← فقط لیست دستی تحلیل شود
+SYMBOLS = [
+    "BTC/USDT:USDT",
+    "ETH/USDT:USDT",
+    "XRP/USDT:USDT",
+    "SOL/USDT:USDT",
+    "DOGE/USDT:USDT",
+    "BNB/USDT:USDT",
+    "ADA/USDT:USDT",
+    "LINK/USDT:USDT",
+    "AVAX/USDT:USDT",
+    "LTC/USDT:USDT",
+    "TRX/USDT:USDT",
+    "BCH/USDT:USDT",
+    "DOT/USDT:USDT",
+    "ETC/USDT:USDT",
+    "ATOM/USDT:USDT",
+    "FIL/USDT:USDT",
+    "NEAR/USDT:USDT",
+    "APT/USDT:USDT",
+    "ARB/USDT:USDT",
+    "OP/USDT:USDT",
+    "SUI/USDT:USDT",
+    "INJ/USDT:USDT",
+    "SEI/USDT:USDT",
+    "AAVE/USDT:USDT",
+    "UNI/USDT:USDT",
+    "CRV/USDT:USDT",
+    "ICP/USDT:USDT",
+    "ALGO/USDT:USDT",
+    "XLM/USDT:USDT",
+    "HBAR/USDT:USDT",
+    "VET/USDT:USDT",
+    "GRT/USDT:USDT",
+    "SAND/USDT:USDT",
+    "MANA/USDT:USDT",
+    "EOS/USDT:USDT",
+    "FLOW/USDT:USDT",
+    "THETA/USDT:USDT",
+    "ROSE/USDT:USDT",
+    "ZEC/USDT:USDT",
+    "COMP/USDT:USDT",
+    "SNX/USDT:USDT",
+    "KAVA/USDT:USDT",
+    "CHZ/USDT:USDT",
+    "APE/USDT:USDT",
+    "LDO/USDT:USDT",
+    "RUNE/USDT:USDT",
+    "EGLD/USDT:USDT",
+    "KSM/USDT:USDT",
+    "ZRX/USDT:USDT",
+    "QTUM/USDT:USDT"
+]
 MAX_SYMBOLS = 50
 TOP_RESULTS = 5
 
@@ -103,4 +153,4 @@ HIGH_IMPACT_WINDOW_MINUTES = 60
 # ==========================
 # Minimum 24h Volume Filter
 # ==========================
-MIN_24H_VOLUME = 1000000   # حداقل حجم معاملات روزانه (USDT)
+MIN_24H_VOLUME = 1000000
