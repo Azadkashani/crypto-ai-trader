@@ -10,6 +10,7 @@ EXCHANGE_NAME = "gate"
 API_KEY = ""
 API_SECRET = ""
 TESTNET = False
+API_BASE_URL = "https://testnet.binancefuture.com"  # فقط برای order_manager.py در حالت TESTNET Binance
 
 # ==========================
 # Trading Settings
