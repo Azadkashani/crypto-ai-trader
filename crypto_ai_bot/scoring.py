@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Advanced Scoring Engine (Balanced Confidence + Weighted Reasons + News/Sentiment)
+Advanced Scoring Engine (Symmetric for Long & Short)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
@@ -135,13 +135,7 @@ class ScoringEngine:
             score -= 8
             warnings.append("Opposing CHoCH (active)")
 
-        # 11. Advanced Analytics – **تعریف متغیرها قبل از بلوک شرطی**
-        regime = None
-        rsi_div = None
-        macd_div = None
-        atr_vol = None
-        oi = None
-
+        # 11. Advanced Analytics (همهٔ ماژول‌ها مانند قبل)
         if advanced_data:
             # -- Liquidity Sweep
             ls = advanced_data.get("liquidity_sweep")
@@ -336,7 +330,11 @@ class ScoringEngine:
         # ==================== افزودن امتیاز اخبار و احساسات ====================
         score += news_score + sentiment_score
 
-        # Base Score before strength factor
+        # **وارون‌سازی امتیاز برای روند نزولی** (تا ست‌آپ‌های فروش هم امتیاز بالا بگیرند)
+        if struct_trend == "bearish":
+            score = -score
+
+        # Base Score (علامت‌دار)
         base_score = score
 
         # Strength Factor
@@ -345,17 +343,15 @@ class ScoringEngine:
         elif strength == "Medium":
             score *= 0.9
 
-        # از abs() استفاده می‌کنیم تا قدرت سیگنال‌های SELL (که مجموع خامشان منفی است)
-        # هنگام کلمپ به بازه 0..100 از بین نرود؛ جهت معامله جای دیگری (trend/action) تعیین می‌شود.
-        score = max(0, min(100, abs(score)))
+        # حفظ قدرمطلق و محدودسازی نهایی
+        score = min(100, abs(score))
 
-        # ==================== محاسبه Confidence ====================
+        # ==================== محاسبه Confidence (قرینه برای خرید و فروش) ====================
         conf = 0
         
-        if struct_trend == "bullish":
-            conf += 15
-        elif struct_trend == "bearish":
-            conf -= 15
+        if struct_trend in ("bullish", "bearish"):
+            conf += 10        # روند قوی در هر دو جهت اعتماد ایجاد می‌کند
+        # sideways تغییری نمی‌کند
 
         if strength == "Very Strong":
             conf += 25
@@ -366,10 +362,18 @@ class ScoringEngine:
         else:
             conf -= 10
 
-        if "Bullish" in mtf_signal:
+        # MTF هم‌جهت
+        if (struct_trend == "bullish" and "Bullish" in mtf_signal) or (struct_trend == "bearish" and "Bearish" in mtf_signal):
             conf += 15
-        elif "Bearish" in mtf_signal:
+        elif (struct_trend == "bullish" and "Bearish" in mtf_signal) or (struct_trend == "bearish" and "Bullish" in mtf_signal):
             conf -= 10
+
+        if last_bos:
+            if (struct_trend == "bullish" and last_bos["type"] == "bullish") or (struct_trend == "bearish" and last_bos["type"] == "bearish"):
+                conf += 10
+
+        if opposing_choch:
+            conf -= 20
 
         if vol_z > 0.5:
             conf += 10
@@ -379,16 +383,13 @@ class ScoringEngine:
         if breakout:
             conf += 15
 
-        if last_bos:
-            conf += 10
-
         if last["EMA20"] > last["EMA50"] and last["EMA50"] > last["EMA200"]:
             conf += 5
 
         if regime:
-            if "Trending" in regime.get("regime", ""):
+            if "Trending" in regime["regime"]:
                 conf += 10
-            elif "Ranging" in regime.get("regime", ""):
+            elif "Ranging" in regime["regime"]:
                 conf -= 5
 
         if rsi_div and rsi_div.get("bullish_divergence"):
@@ -396,9 +397,7 @@ class ScoringEngine:
         if macd_div and macd_div.get("bullish_div"):
             conf += 5
 
-        if opposing_choch:
-            conf -= 5
-        if atr_vol and atr_vol.get("volatility") == "High Volatility":
+        if atr_vol and atr_vol["volatility"] == "High Volatility":
             conf -= 3
         if oi and oi.get("state") == "Long Unwinding":
             conf -= 2
@@ -409,11 +408,10 @@ class ScoringEngine:
 
         conf = max(10, min(100, conf))
 
-        # حذف دلایل تکراری
+        # حذف دلایل تکراری و افزودن وزن‌ها (مانند قبل)
         reasons = list(dict.fromkeys(reasons))
         warnings = list(dict.fromkeys(warnings))
 
-        # افزودن وزن‌ها
         weighted_reasons = []
         for r in reasons:
             weight = REASON_WEIGHTS.get(r, 1)
@@ -422,10 +420,11 @@ class ScoringEngine:
 
         weighted_warnings = []
         for w in warnings:
-            # برخی هشدارها متن داینامیک دارند، مثل "Price Near Resistance (1.8%)".
-            # ابتدا تطابق دقیق را امتحان می‌کنیم، سپس با حذف پسوند پرانتزی به دنبال کلید پایه می‌گردیم.
-            base_key = w.split(" (")[0]
-            weight_tuple = WARNING_WEIGHTS.get(w, WARNING_WEIGHTS.get(base_key, (1, "minor")))
+            if w.startswith("Price Near Resistance"):
+                lookup_key = "Price Near Resistance"
+            else:
+                lookup_key = w
+            weight_tuple = WARNING_WEIGHTS.get(lookup_key, (1, "minor"))
             weight = weight_tuple[0] if isinstance(weight_tuple, tuple) else weight_tuple
             stars = "★" * weight
             weighted_warnings.append(f"{stars} {w}")
