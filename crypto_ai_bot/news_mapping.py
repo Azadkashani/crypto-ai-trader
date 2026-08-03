@@ -1,9 +1,7 @@
 """
 Crypto AI Bot v1.1
-News to Symbol Mapping (with word boundaries)
+News to Symbol Mapping (extended keywords)
 """
-
-import re
 
 SYMBOL_KEYWORDS = {
     "BTC": ["bitcoin", "btc", "xbt"],
@@ -34,17 +32,20 @@ SYMBOL_KEYWORDS = {
     "SEI": ["sei"],
 }
 
+import re
+
+
 class NewsMapping:
     @staticmethod
     def get_related_symbols(title):
         title_lower = title.lower()
         related = []
         for symbol, keywords in SYMBOL_KEYWORDS.items():
-            for kw in keywords:
-                # تطبیق فقط در صورت کلمهٔ کامل (با مرز)
-                if re.search(r'\b' + re.escape(kw) + r'\b', title_lower):
-                    related.append(symbol)
-                    break   # هر نماد را یک‌بار اضافه کن
+            # قبلاً substring ساده (kw in title_lower) باعث false positive می‌شد،
+            # مثلاً "op" داخل "stop"، "sol" داخل "solution"، "near" داخل "nearly".
+            # حالا با \b (مرز کلمه) فقط تطابق کلمه‌ی کامل قبول می‌شود.
+            if any(re.search(r"\b" + re.escape(kw) + r"\b", title_lower) for kw in keywords):
+                related.append(symbol)
         if not related:
             related.append("MARKET")
         return related
