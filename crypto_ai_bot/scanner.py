@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Volume Filter)
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Symmetric Scoring)
 """
 
 from market_structure import MarketStructure
@@ -126,6 +126,7 @@ class MarketScanner:
                     sentiment_score_val = scores["sentiment_score"]
                     relevant_news = related_news
 
+                # === Scoring جدید (buy_score / sell_score) ===
                 analysis = ScoringEngine.calculate(
                     df, mtf_signal,
                     market_structure=market_structure,
@@ -135,21 +136,27 @@ class MarketScanner:
                     sentiment_score=sentiment_score_val
                 )
 
-                base_score = analysis["base_score"]
-                mtf_bonus = analysis["mtf_bonus"]
-                score = analysis["score"]
+                buy_score = analysis["buy_score"]
+                sell_score = analysis["sell_score"]
+                score = analysis["score"]       # base_score (max)
                 breakout = analysis["breakout"]
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
+                # === Decision جدید (مقایسه buy_score / sell_score) ===
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
-                    advanced_data, score, breakout, reasons, warnings,
+                    advanced_data,
+                    buy_score=buy_score,
+                    sell_score=sell_score,
+                    breakout=breakout,
+                    reasons=reasons,
+                    warnings=warnings,
                     risk_event=macro_risk_active,
                     news_score=news_score_val,
-                    sentiment_score=sentiment_score_val,
+                    sentiment_score=sentiment_score_val
                 )
 
                 action = decision["action"]
@@ -194,8 +201,8 @@ class MarketScanner:
                     "MTF_Details": mtf_details,
                     "Confidence": confidence,
                     "RSI": round(last["RSI"], 2),
-                    "Base Score": base_score,
-                    "MTF Bonus": mtf_bonus,
+                    "Buy Score": buy_score,
+                    "Sell Score": sell_score,
                     "Score": score,
                     "Action": action,
                     "Support": support,
