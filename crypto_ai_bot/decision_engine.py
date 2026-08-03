@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Professional Decision Engine (Balanced – Stricter Thresholds)
+Professional Decision Engine (Fully Symmetric for Long & Short)
 """
 
 from weights import WARNING_WEIGHTS
@@ -21,17 +21,16 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence (بدون تغییر) ----
+        # ---- Confidence (متقارن) ----
         conf = 30
-        if trend == "bullish": conf += 10
-        elif trend == "bearish": conf += 10
+        if trend in ("bullish", "bearish"): conf += 10
         if strength == "Very Strong": conf += 20
         elif strength == "Strong": conf += 15
         elif strength == "Medium": conf += 5
         else: conf -= 10
-        if ("Bullish" in mtf_signal and trend == "bullish") or ("Bearish" in mtf_signal and trend == "bearish"):
+        if (trend == "bullish" and "Bullish" in mtf_signal) or (trend == "bearish" and "Bearish" in mtf_signal):
             conf += 15
-        elif ("Bearish" in mtf_signal and trend == "bullish") or ("Bullish" in mtf_signal and trend == "bearish"):
+        elif (trend == "bullish" and "Bearish" in mtf_signal) or (trend == "bearish" and "Bullish" in mtf_signal):
             conf -= 10
         if last_bos:
             if (trend == "bullish" and last_bos["type"] == "bullish") or (trend == "bearish" and last_bos["type"] == "bearish"):
@@ -47,24 +46,28 @@ class DecisionEngine:
         if risk_event: conf -= 15
         conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness (جریمه‌های افزایش‌یافته) ----
+        # ---- Trade Readiness (کاملاً قرینه برای خرید و فروش) ----
         readiness = 20
 
-        if trend == "bullish" or trend == "bearish":
+        # روند (برای هر دو جهت یکسان)
+        if trend in ("bullish", "bearish"):
             readiness += 15
         else:
             readiness -= 15
 
+        # قدرت روند
         if strength == "Very Strong": readiness += 10
         elif strength == "Strong": readiness += 7
         elif strength == "Medium": readiness += 3
         else: readiness -= 10
 
+        # هم‌جهتی MTF (جهت‌دار)
         if (trend == "bullish" and "Bullish" in mtf_signal) or (trend == "bearish" and "Bearish" in mtf_signal):
             readiness += 10
         elif (trend == "bullish" and "Bearish" in mtf_signal) or (trend == "bearish" and "Bullish" in mtf_signal):
             readiness -= 10
 
+        # BOS (جهت‌دار)
         if last_bos:
             if (trend == "bullish" and last_bos["type"] == "bullish") or (trend == "bearish" and last_bos["type"] == "bearish"):
                 readiness += 10
@@ -73,17 +76,19 @@ class DecisionEngine:
         else:
             readiness -= 10
 
+        # CHoCH مخالف
         if opposing_choch:
             readiness -= 20
 
-        # حجم (جریمه‌های سنگین‌تر)
+        # حجم (خنثی)
         if vol_z > 0.5:
             readiness += 10
         elif vol_z < -0.5:
-            readiness -= 20   # قبلاً -15
+            readiness -= 20
         else:
-            readiness -= 10   # قبلاً -5
+            readiness -= 10
 
+        # شکست (جهت‌دار: در فروش، شکست حمایت مهم است)
         if breakout:
             readiness += 10
 
@@ -111,22 +116,48 @@ class DecisionEngine:
         if risk_event:
             readiness -= 30
 
-        # سهم امتیاز تکنیکال (سقف ۱۵)
+        # سهم امتیاز تکنیکال (خنثی)
         readiness += min(score // 5, 15)
 
-        # جریمه‌های جدید برای هشدارهای رایج
-        if "Premium Zone" in warnings or "Premium Zone" in str(warnings):
-            readiness -= 5
-        if "OI Long Unwinding" in warnings or "OI Short Build Up" in warnings:
-            readiness -= 8
-        if "Strong Resistance" in warnings:
-            readiness -= 10
+        # جریمه‌های ویژه – **قرینه‌سازی بر اساس جهت روند**
+        # برای خرید: Discount خوب است، Premium بد
+        # برای فروش: Premium خوب است، Discount بد
+        if trend == "bullish":
+            if "Premium Zone" in warnings or "Premium Zone" in str(warnings):
+                readiness -= 5
+            if "Discount Zone" in reasons or "Discount Zone" in str(reasons):
+                readiness += 5
+            if "Price Near Resistance" in str(warnings):
+                readiness -= 10
+            if "Strong Support" in reasons or "Strong Support" in str(reasons):
+                readiness += 5
+        elif trend == "bearish":
+            if "Premium Zone" in warnings or "Premium Zone" in str(warnings):
+                readiness += 5
+            if "Discount Zone" in reasons or "Discount Zone" in str(reasons):
+                readiness -= 5
+            if "Price Near Resistance" in str(warnings):
+                readiness += 10   # نزدیکی به مقاومت برای فروش خوب است (سقف)
+            if "Strong Support" in reasons or "Strong Support" in str(reasons):
+                readiness -= 5    # حمایت قوی برای فروش بد است
+
+        # جریمه‌های OI (جهت‌دار)
+        if "OI Long Unwinding" in warnings or "OI Long Unwinding" in str(warnings):
+            readiness -= 8 if trend == "bullish" else 0
+        if "OI Short Build Up" in warnings or "OI Short Build Up" in str(warnings):
+            readiness -= 8 if trend == "bearish" else 0
+
+        # کندل‌های جهت‌دار
         if "Bearish Candlestick" in warnings:
-            readiness -= 5
+            readiness -= 5 if trend == "bullish" else 0
+            readiness += 5 if trend == "bearish" else 0
+        if "Bullish Candlestick" in reasons:
+            readiness += 5 if trend == "bullish" else 0
+            readiness -= 5 if trend == "bearish" else 0
 
         readiness = max(0, min(100, readiness))
 
-        # ---- Action اصلی (آستانه‌های بالاتر) ----
+        # ---- Action اصلی (آستانه‌های یکسان) ----
         critical_rejections = []
         if risk_event:
             critical_rejections.append("Macro Risk Active")
@@ -175,7 +206,7 @@ class DecisionEngine:
             "Missing": [],
             "Risk Level": "Medium"
         }
-        print(f"[DecisionEngine v3.0] {trend} | Readiness={readiness} | Conf={conf}")
+        print(f"[DecisionEngine v3.1] {trend} | Readiness={readiness} | Conf={conf}")
         return {
             "action": action,
             "confidence": conf,
