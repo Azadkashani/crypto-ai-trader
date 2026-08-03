@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Advanced Scoring Engine (Balanced Confidence + Weighted Reasons + News/Sentiment + Fixed Clamp)
+Advanced Scoring Engine (Balanced Confidence + Weighted Reasons + News/Sentiment)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
@@ -135,7 +135,13 @@ class ScoringEngine:
             score -= 8
             warnings.append("Opposing CHoCH (active)")
 
-        # 11. Advanced Analytics (همه‌ی ماژول‌ها)
+        # 11. Advanced Analytics – **تعریف متغیرها قبل از بلوک شرطی**
+        regime = None
+        rsi_div = None
+        macd_div = None
+        atr_vol = None
+        oi = None
+
         if advanced_data:
             # -- Liquidity Sweep
             ls = advanced_data.get("liquidity_sweep")
@@ -330,7 +336,7 @@ class ScoringEngine:
         # ==================== افزودن امتیاز اخبار و احساسات ====================
         score += news_score + sentiment_score
 
-        # Base Score before strength factor (علامت‌دار)
+        # Base Score before strength factor
         base_score = score
 
         # Strength Factor
@@ -339,10 +345,11 @@ class ScoringEngine:
         elif strength == "Medium":
             score *= 0.9
 
-        # اصلاح: استفاده از قدرمطلق برای حفظ قدرت سیگنال‌های فروش
-        score = min(100, abs(score))
+        # از abs() استفاده می‌کنیم تا قدرت سیگنال‌های SELL (که مجموع خامشان منفی است)
+        # هنگام کلمپ به بازه 0..100 از بین نرود؛ جهت معامله جای دیگری (trend/action) تعیین می‌شود.
+        score = max(0, min(100, abs(score)))
 
-        # ==================== محاسبه Confidence (متعادل‌تر + News/Sentiment) ====================
+        # ==================== محاسبه Confidence ====================
         conf = 0
         
         if struct_trend == "bullish":
@@ -379,9 +386,9 @@ class ScoringEngine:
             conf += 5
 
         if regime:
-            if "Trending" in regime["regime"]:
+            if "Trending" in regime.get("regime", ""):
                 conf += 10
-            elif "Ranging" in regime["regime"]:
+            elif "Ranging" in regime.get("regime", ""):
                 conf -= 5
 
         if rsi_div and rsi_div.get("bullish_divergence"):
@@ -391,7 +398,7 @@ class ScoringEngine:
 
         if opposing_choch:
             conf -= 5
-        if atr_vol and atr_vol["volatility"] == "High Volatility":
+        if atr_vol and atr_vol.get("volatility") == "High Volatility":
             conf -= 3
         if oi and oi.get("state") == "Long Unwinding":
             conf -= 2
@@ -406,7 +413,7 @@ class ScoringEngine:
         reasons = list(dict.fromkeys(reasons))
         warnings = list(dict.fromkeys(warnings))
 
-        # افزودن وزن‌ها به Reasons و Warnings
+        # افزودن وزن‌ها
         weighted_reasons = []
         for r in reasons:
             weight = REASON_WEIGHTS.get(r, 1)
@@ -415,12 +422,10 @@ class ScoringEngine:
 
         weighted_warnings = []
         for w in warnings:
-            # اصلاح: استخراج بخش ثابت برای کلید "Price Near Resistance"
-            if w.startswith("Price Near Resistance"):
-                lookup_key = "Price Near Resistance"
-            else:
-                lookup_key = w
-            weight_tuple = WARNING_WEIGHTS.get(lookup_key, (1, "minor"))
+            # برخی هشدارها متن داینامیک دارند، مثل "Price Near Resistance (1.8%)".
+            # ابتدا تطابق دقیق را امتحان می‌کنیم، سپس با حذف پسوند پرانتزی به دنبال کلید پایه می‌گردیم.
+            base_key = w.split(" (")[0]
+            weight_tuple = WARNING_WEIGHTS.get(w, WARNING_WEIGHTS.get(base_key, (1, "minor")))
             weight = weight_tuple[0] if isinstance(weight_tuple, tuple) else weight_tuple
             stars = "★" * weight
             weighted_warnings.append(f"{stars} {w}")
