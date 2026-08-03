@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Configuration File (Signal-Only – Corrected 50 Futures Symbols)
+Configuration File (Signal-Only – Custom 49 Futures Symbols)
 """
 
 # ==========================
@@ -14,7 +14,7 @@ TESTNET = False
 # ==========================
 # Trading Settings
 # ==========================
-USE_ALL_MARKETS = False          # ← فقط لیست دستی تحلیل شود
+USE_ALL_MARKETS = False
 SYMBOLS = [
     "BTC/USDT:USDT",
     "ETH/USDT:USDT",
@@ -50,7 +50,6 @@ SYMBOLS = [
     "GRT/USDT:USDT",
     "SAND/USDT:USDT",
     "MANA/USDT:USDT",
-    "EOS/USDT:USDT",
     "FLOW/USDT:USDT",
     "THETA/USDT:USDT",
     "ROSE/USDT:USDT",
