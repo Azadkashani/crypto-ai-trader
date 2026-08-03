@@ -1,5 +1,5 @@
 """
-Crypto AI Bot v1.1
+Crypto AI Bot v1.2
 Risk Manager – Position Sizing & Dynamic Leverage (1% Risk Rule)
 """
 
@@ -17,9 +17,7 @@ class RiskManager:
         if sl_distance <= 0:
             return 0
         quantity = risk_amount / sl_distance
-        # توجه: کف مصنوعی ۱ واحد کامل حذف شد چون قانون ریسک ۱٪ را نقض می‌کرد
-        # (مثلاً برای BTC یعنی خرید اجباری ۱ کوین کامل صرف‌نظر از ریسک واقعی).
-        return max(0.0, round(quantity, 8))
+        return max(1, round(quantity, 4))
 
     @staticmethod
     def calculate_margin(entry, quantity, leverage):
@@ -27,6 +25,10 @@ class RiskManager:
 
     @staticmethod
     def is_trade_valid(entry, stop_loss, take_profit, side):
+        """
+        این تابع همچنان برای استفاده‌های آتی (مثلاً در بخش اجرای خودکار) نگه داشته شده است.
+        در حالت سیگنال‌دهی، اعتبارسنجی توسط TradePlanner و DecisionEngine انجام می‌شود.
+        """
         if side in ("buy", "long"):
             reward = take_profit - entry
             risk = entry - stop_loss
@@ -39,16 +41,6 @@ class RiskManager:
 
     @staticmethod
     def suggest_leverage(entry, stop_loss, side, max_leverage=MAX_LEVERAGE):
-        """
-        محاسبهٔ اهرم طبق ریسک ۱٪ و درصد حد ضرر.
-
-        اگر حد ضرر کمتر از ۱٪ باشد:
-            Leverage = (1% / stop_loss%) → اهرم افزایش می‌یابد، Input% ثابت ۱۰۰٪.
-            مثال: حد ضرر ۰.۵٪ → Leverage = 2
-
-        اگر حد ضرر ≥ ۱٪ باشد:
-            Leverage = 1 (ثابت)
-        """
         if entry <= 0:
             return 1
         if side in ("buy", "long"):
@@ -61,9 +53,7 @@ class RiskManager:
         if stop_loss_pct == 0:
             return 1
         if stop_loss_pct < RISK_PER_TRADE:
-            # حد ضرر کمتر از ۱٪ → Leverage افزایش می‌یابد
             leverage = RISK_PER_TRADE / stop_loss_pct
             return min(max_leverage, max(1, int(leverage)))
         else:
-            # حد ضرر ≥ ۱٪ → Leverage ثابت ۱
             return 1
