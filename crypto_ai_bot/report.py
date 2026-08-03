@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Advanced Report Engine (Smart Price Display, Volume in K/M, Single Target with R:R)
+Advanced Report Engine (Smart Price Display, Volume in K/M in table, Single Target with R:R)
 """
 
 import pandas as pd
@@ -29,6 +29,10 @@ class ReportEngine:
 
         table = pd.DataFrame(results)
         table = table.sort_values(by="Trade Readiness", ascending=False)
+
+        # تبدیل ستون حجم به فرمت خوانا (برای جدول)
+        if "VolumeUSDT" in table.columns:
+            table["VolumeUSDT"] = table["VolumeUSDT"].apply(format_volume)
 
         print("\n" + "=" * 140)
         print("CRYPTO AI BOT MARKET SCANNER v1.1")
