@@ -1,6 +1,6 @@
 """
-Crypto AI Bot v1.1
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Symmetric Scoring)
+Crypto AI Bot v1.2
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Enhanced Fundamental Analysis)
 """
 
 from market_structure import MarketStructure
@@ -75,10 +75,12 @@ class MarketScanner:
         if ENABLE_NEWS_ENGINE:
             all_raw_news = NewsEngine.fetch_news()
             analyzed_news = [NewsAnalyzer.analyze(n) for n in all_raw_news]
+            # افزودن assets به هر خبر با NewsMapping جدید (v1.2)
             for news in analyzed_news:
-                news["currencies"] = NewsMapping.get_related_symbols(news["title"])
+                news["assets"] = NewsMapping.get_related_assets(news["title"])
 
-        sentiment_data_base = MarketSentiment.fetch_sentiment(self.data.exchange) if ENABLE_SENTIMENT_ENGINE else None
+        # Global sentiment (یک بار برای همه)
+        global_sentiment = MarketSentiment.fetch_global_sentiment() if ENABLE_SENTIMENT_ENGINE else None
 
         calendar_events = EconomicCalendar.fetch_events() if ENABLE_ECONOMIC_CALENDAR else []
         macro_risk_active, macro_event = RiskEvents.is_high_impact_near(calendar_events)
@@ -109,24 +111,28 @@ class MarketScanner:
                 # === Advanced Analytics واقعی ===
                 advanced_data = self.advanced.analyze(df, market_structure, symbol)
 
-                # === News Score ===
+                # === News Score (v1.2: per-symbol with multi-level weighting) ===
                 news_score_val = 0
                 sentiment_score_val = 0
                 relevant_news = []
+                asset_sentiment = {}
                 if ENABLE_NEWS_ENGINE:
-                    sentiment_data = MarketSentiment.fetch_sentiment(self.data.exchange, symbol) if ENABLE_SENTIMENT_ENGINE else sentiment_data_base
+                    # Asset sentiment مخصوص این نماد
+                    asset_sentiment = MarketSentiment.fetch_asset_sentiment(self.data.exchange, symbol) if ENABLE_SENTIMENT_ENGINE else {}
                     base_coin = symbol.split("/")[0]
                     related_news = []
                     for news in analyzed_news:
-                        currencies = news.get("currencies", [])
-                        if base_coin in currencies or "MARKET" in currencies:
-                            related_news.append(news)
-                    scores = NewsScoring.calculate(related_news, sentiment_data, symbol)
+                        assets = news.get("assets", [])
+                        for a in assets:
+                            if a["symbol"] == base_coin or a["symbol"] == "MARKET":
+                                related_news.append(news)
+                                break
+                    scores = NewsScoring.calculate(related_news, global_sentiment, asset_sentiment, symbol)
                     news_score_val = scores["news_score"]
                     sentiment_score_val = scores["sentiment_score"]
                     relevant_news = related_news
 
-                # === Scoring جدید (buy_score / sell_score) ===
+                # === Scoring (همان نسخه متقارن v1.1) ===
                 analysis = ScoringEngine.calculate(
                     df, mtf_signal,
                     market_structure=market_structure,
@@ -138,14 +144,14 @@ class MarketScanner:
 
                 buy_score = analysis["buy_score"]
                 sell_score = analysis["sell_score"]
-                score = analysis["score"]       # base_score (max)
+                score = analysis["score"]
                 breakout = analysis["breakout"]
                 reasons = analysis["reasons"]
                 warnings = analysis["warnings"]
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # === Decision جدید (مقایسه buy_score / sell_score) ===
+                # === Decision (مقایسه buy_score / sell_score) ===
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data,
@@ -223,6 +229,8 @@ class MarketScanner:
                     "Trade Readiness": trade_readiness,
                     "News Score": news_score_val,
                     "Sentiment Score": sentiment_score_val,
+                    "Global Sentiment": global_sentiment,
+                    "Asset Sentiment": asset_sentiment,
                     "Macro Risk": macro_risk_active,
                     "Macro Event": macro_event["title"] if macro_risk_active else None,
                     "Relevant News": relevant_news,
