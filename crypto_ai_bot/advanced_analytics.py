@@ -68,7 +68,7 @@ class AdvancedAnalytics:
         if ENABLE_VWAP:
             result["vwap"] = VWAP.detect(df)
         if ENABLE_OPEN_INTEREST and self.data_engine:
-            result["open_interest"] = OpenInterest.detect(symbol, self.data_engine.exchange)
+            result["open_interest"] = OpenInterest.detect(symbol, self.data_engine.exchange, df)
         if ENABLE_FUNDING_RATE and self.data_engine:
             result["funding_rate"] = FundingRate.detect(symbol, self.data_engine.exchange)
         if ENABLE_ATR_VOLATILITY:
