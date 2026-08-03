@@ -1,39 +1,20 @@
 """
 Crypto AI Bot v1.1
-Economic Calendar – safe mock (events are in the past, will not block trades)
+Economic Calendar – simulated high-impact events
 """
 
-from config import ENABLE_ECONOMIC_CALENDAR
+from datetime import datetime, timedelta
 
 class EconomicCalendar:
     @staticmethod
     def fetch_events():
         """
-        اگر ENABLE_ECONOMIC_CALENDAR = True باشد، رویدادهای mock بازگردانده می‌شوند.
-        این رویدادها در گذشته قرار دارند و هرگز به‌عنوان «نزدیک» شناسایی نمی‌شوند.
-        برای استفادهٔ واقعی باید یک API تقویم اقتصادی متصل شود.
-        """
-        if not ENABLE_ECONOMIC_CALENDAR:
-            return []
+        ⚠️ TODO: این تابع باید به یک منبع واقعی اقتصادی (API واقعی economic calendar) وصل شود.
 
-        # این تاریخ‌ها ثابت و متعلق به گذشته هستند.
-        return [
-            {
-                "title": "FOMC Minutes (mock)",
-                "time": "2020-01-01 12:00",
-                "country": "USD",
-                "impact": "high",
-                "actual": None,
-                "forecast": None,
-                "previous": None
-            },
-            {
-                "title": "CPI Data (mock)",
-                "time": "2020-01-01 12:00",
-                "country": "USD",
-                "impact": "high",
-                "actual": None,
-                "forecast": None,
-                "previous": None
-            },
-        ]
+        نسخه‌ی قبلی همیشه دو رویداد ساختگی با آفست ثابت (۴۵ و ۹۰ دقیقه از "الان") برمی‌گرداند.
+        چون این آفست‌ها نسبت به لحظه‌ی فراخوانی دوباره تولید می‌شدند، اگر ENABLE_ECONOMIC_CALENDAR
+        فعال می‌شد، RiskEvents.is_high_impact_near همیشه یک رویداد "high impact" نزدیک پیدا می‌کرد
+        و ربات برای همیشه در حالت WATCH اجباری (Macro Risk Active) گیر می‌کرد.
+        تا زمان اتصال به API واقعی، لیست خالی برمی‌گردانیم تا این قفل دائمی رخ ندهد.
+        """
+        return []
