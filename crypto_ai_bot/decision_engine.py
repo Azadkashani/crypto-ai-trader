@@ -1,15 +1,17 @@
 """
-Crypto AI Bot v1.1
-Professional Decision Engine – Score Comparison (buy_score vs sell_score)
+Crypto AI Bot v1.2
+Professional Decision Engine – Score Comparison + RR Validation
 """
 
 from weights import WARNING_WEIGHTS
+from config import MIN_RISK_REWARD
 
 class DecisionEngine:
     @staticmethod
     def evaluate(df, market_structure, mtf_signal, strength, advanced_data,
                  buy_score, sell_score, breakout, reasons, warnings,
-                 risk_event=False, news_score=0, sentiment_score=0):
+                 risk_event=False, news_score=0, sentiment_score=0,
+                 rr=None):
         last = df.iloc[-1]
         trend = market_structure.get("trend", "sideways")
         bos = market_structure.get("bos", [])
@@ -23,14 +25,12 @@ class DecisionEngine:
 
         # ---- Confidence (متقارن) ----
         conf = 30
-        if trend in ("bullish", "bearish"):
-            conf += 10
+        if trend in ("bullish", "bearish"): conf += 10
         if strength == "Very Strong": conf += 20
         elif strength == "Strong": conf += 15
         elif strength == "Medium": conf += 5
         else: conf -= 10
 
-        # MTF alignment based on dominant direction
         if buy_score > sell_score:
             if "Bullish" in mtf_signal: conf += 15
             elif "Bearish" in mtf_signal: conf -= 10
@@ -94,6 +94,13 @@ class DecisionEngine:
             action = "NO TRADE"
             decision_reason = "No actionable signal."
 
+        # ---- اعتبارسنجی Risk/Reward ----
+        if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL") and rr is not None:
+            if rr < MIN_RISK_REWARD:
+                action = "WATCH"
+                decision_reason = f"Risk/Reward too low ({rr:.2f} < {MIN_RISK_REWARD})"
+                conf -= 10  # کاهش اطمینان
+
         summary = {
             "Market Bias": "Bullish" if buy_score > sell_score else "Bearish" if sell_score > buy_score else "Sideways",
             "Current Status": decision_reason,
@@ -102,7 +109,7 @@ class DecisionEngine:
             "Risk Level": "Medium"
         }
 
-        print(f"[DecisionEngine v4.0] buy={buy_score} sell={sell_score} => {action}")
+        print(f"[DecisionEngine v4.1] buy={buy_score} sell={sell_score} => {action}")
         return {
             "action": action,
             "confidence": conf,
