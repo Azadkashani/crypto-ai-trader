@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Advanced Report Engine (Smart Price Display, Volume USDT, Single Target with R:R)
+Advanced Report Engine (Smart Price Display, Volume in K/M, Single Target with R:R)
 """
 
 import pandas as pd
@@ -11,6 +11,16 @@ def smart_price(price):
         s = f"{price:.8f}"
         return s.rstrip('0').rstrip('.') if '.' in s else s
     return f"{price:.4f}"
+
+def format_volume(vol):
+    """تبدیل حجم به K/M"""
+    if vol is None: return "N/A"
+    if vol >= 1e6:
+        return f"{vol/1e6:.1f}M"
+    elif vol >= 1e3:
+        return f"{vol/1e3:.0f}K"
+    else:
+        return f"{vol:.0f}"
 
 class ReportEngine:
     @staticmethod
@@ -54,7 +64,7 @@ class ReportEngine:
             if "News Score" in item:
                 print(f"News Score: {item.get('News Score', 0)}  |  Sentiment Score: {item.get('Sentiment Score', 0)}")
             if "VolumeUSDT" in item:
-                print(f"24h Volume: {item['VolumeUSDT']:,} USDT")
+                print(f"24h Volume: {format_volume(item['VolumeUSDT'])} USDT")
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
             print(f"Take Profit: {smart_price(tp1)} ({tp1_pct:+.2f}%)  |  R:R = {rr1:.1f}")
@@ -100,7 +110,7 @@ class ReportEngine:
             print(f"Action: {item['Action']}")
             print(f"Trade Readiness: {item['Trade Readiness']}")
             if "VolumeUSDT" in item:
-                print(f"24h Volume: {item['VolumeUSDT']:,} USDT")
+                print(f"24h Volume: {format_volume(item['VolumeUSDT'])} USDT")
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
             print(f"Take Profit: {smart_price(tp1)} ({tp1_pct:+.2f}%)  |  R:R = {rr1:.1f}")
