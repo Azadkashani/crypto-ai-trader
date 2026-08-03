@@ -1,6 +1,6 @@
 """
-Crypto AI Bot v1.1
-Backtester Engine – Full version with CSV support, Mock, API, yfinance, Advanced Analytics, fixed MTF
+Crypto AI Bot
+Backtester Engine – Full version with CSV support, Mock, API (MEXC, Bybit, etc.), and internal MTF
 """
 
 import pandas as pd
@@ -18,10 +18,8 @@ from equity_curve import EquityCurve
 from performance import Performance
 from backtest_report import BacktestReport
 from mtf_engine import MTFEngine
-from timeframe import TIMEFRAMES, TIMEFRAME_WEIGHT
-
-# Advanced Analytics
 from advanced_analytics import AdvancedAnalytics
+from timeframe import TIMEFRAME_WEIGHT
 
 
 class CausalMarketStructure:
@@ -70,7 +68,7 @@ class Backtester:
                 self.exchange = ccxt.kucoinfutures({'enableRateLimit': True})
             elif exchange_name == 'gate':
                 self.exchange = ccxt.gate({'enableRateLimit': True})
-            else:
+            else:  # binance
                 self.exchange = ccxt.binance({
                     'enableRateLimit': True,
                     'options': {'defaultType': 'future'}
@@ -79,14 +77,14 @@ class Backtester:
         self.portfolio = Portfolio(initial_capital, risk_per_trade, leverage, fee, slippage, spread)
         self.trade_engine = TradeEngine(self.portfolio, trailing_stop, trailing_activation, max_hold_bars)
         self.equity_curve = EquityCurve()
+        # data_engine=None در حالت آفلاین/mock: یعنی موارد وابسته به صرافی زنده
+        # (Open Interest, Funding Rate, Correlation) به‌صورت امن نادیده گرفته می‌شوند.
+        self.advanced_analytics_engine = AdvancedAnalytics(data_engine=self if self.exchange else None)
 
         self.data = {}
         self.indicators = {}
         self.market_structures = {}
         self.advanced_analytics = {}
-
-        # نمونه‌ی AdvancedAnalytics برای بک‌تست (با exchange ممکن است خطا دهد، با try مدیریت می‌شود)
-        self.advanced = AdvancedAnalytics(data_engine=None)  # در بک‌تست exchange نداریم
 
     def _generate_mock_data(self, sym):
         np.random.seed(42)
@@ -205,48 +203,70 @@ class Backtester:
             except Exception as e:
                 print(f"yfinance failed for {sym}: {e}")
 
-    def _calculate_mtf_signal(self, df_hourly):
+    @staticmethod
+    def _pandas_freq(tf):
+        """تبدیل رشته تایم‌فریم سبک ccxt (4h, 1d, ...) به فرکانس قابل‌فهم pandas.resample"""
+        unit_map = {"m": "min", "h": "h", "d": "D", "w": "W"}
+        num = "".join(ch for ch in tf if ch.isdigit()) or "1"
+        unit = "".join(ch for ch in tf if ch.isalpha())
+        return f"{num}{unit_map.get(unit, 'h')}"
+
+    def _calculate_mtf_signal(self, df):
         """
-        محاسبه سیگنال MTF با استفاده از تایم‌فریم‌های بالاتر (4h, 1d) و وزن‌های timeframe.py
+        محاسبه سیگنال مولتی‌تایم‌فریم دقیقاً هم‌راستا با scanner.py (حالت لایو):
+        از همان TIMEFRAME_WEIGHT در timeframe.py استفاده می‌کند (تایم‌فریم‌های بالاتر: 4h, 1d)
+        تا رفتار بک‌تست و لایو یکسان باشد.
         """
-        results = {}
-        # 4h
-        df_4h = df_hourly.resample('4h', on='time').agg({
-            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
-        }).dropna()
-        if len(df_4h) >= 20:
-            df_4h_ind = IndicatorEngine.calculate(df_4h.copy())
-            from trend import TrendEngine
-            trend_4h = TrendEngine.detect(df_4h_ind)
-        else:
-            trend_4h = "Sideways"
-        results["4h"] = trend_4h
+        from trend import TrendEngine
+        bullish = 0.0
+        bearish = 0.0
+        for tf, weight in TIMEFRAME_WEIGHT.items():
+            try:
+                freq = self._pandas_freq(tf)
+                df_tf = df.resample(freq, on='time').agg({
+                    'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
+                }).dropna()
+                if len(df_tf) < 20:
+                    continue
+                df_tf_ind = IndicatorEngine.calculate(df_tf.copy())
+                trend_tf = TrendEngine.detect(df_tf_ind)
+            except Exception:
+                continue
+            if trend_tf == "Bullish":
+                bullish += weight
+            elif trend_tf == "Bearish":
+                bearish += weight
 
-        # 1d
-        df_1d = df_hourly.resample('1d', on='time').agg({
-            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum'
-        }).dropna()
-        if len(df_1d) >= 20:
-            df_1d_ind = IndicatorEngine.calculate(df_1d.copy())
-            trend_1d = TrendEngine.detect(df_1d_ind)
-        else:
-            trend_1d = "Sideways"
-        results["1d"] = trend_1d
+        if bullish >= 0.7:
+            return "Strong Bullish"
+        elif bearish >= 0.7:
+            return "Strong Bearish"
+        elif bullish > bearish:
+            return "Bullish"
+        elif bearish > bullish:
+            return "Bearish"
+        return "Neutral"
 
-        # محاسبه با MTFEngine (استفاده از وزن‌های timeframe.py)
-        return MTFEngine.analyze(results)
+    def _analyze_at(self, sym, df_slice):
+        """
+        تحلیل ساختار بازار و آنالیز پیشرفته را فقط روی داده‌ی تا لحظه‌ی جاری (df_slice)
+        محاسبه می‌کند.
 
-    def compute_analysis(self, sym):
-        if sym not in self.indicators:
-            return
-        df = self.indicators[sym]
-        self.market_structures[sym] = CausalMarketStructure.analyze(df)
-        # Advanced analytics با try/except برای جلوگیری از کرش
+        ⚠️ نسخه‌ی قبلی (compute_analysis) این تحلیل‌ها را یک‌بار روی کل دیتافریم
+        (از ابتدا تا انتهای بازه‌ی بک‌تست) محاسبه می‌کرد و همان نتیجه‌ی ثابت را برای
+        تمام کندل‌های شبیه‌سازی دوباره استفاده می‌کرد. این یعنی Look-Ahead Bias شدید:
+        تصمیم‌گیری در هر لحظه از بک‌تست، اطلاعات آینده (تا انتهای بازه) را می‌دید.
+        این متد آن مشکل را با محاسبه‌ی دوباره‌ی ساختار بازار برای هر لحظه، فقط بر
+        اساس داده‌ی موجود تا همان لحظه، برطرف می‌کند.
+        """
+        ms = CausalMarketStructure.analyze(df_slice)
         try:
-            self.advanced_analytics[sym] = self.advanced.analyze(df, self.market_structures[sym], sym)
-        except Exception as e:
-            print(f"Advanced analytics error for {sym}: {e}")
-            self.advanced_analytics[sym] = None
+            advanced_data = self.advanced_analytics_engine.analyze(
+                df_slice, market_structure=ms, symbol=sym
+            )
+        except Exception:
+            advanced_data = None
+        return ms, advanced_data
 
     def run(self):
         print("Loading historical data...")
@@ -257,9 +277,8 @@ class Backtester:
             print("No valid symbols for backtest.")
             return
 
-        print("Computing indicators and structure...")
-        for sym in self.symbols:
-            self.compute_analysis(sym)
+        # حداقل تعداد کندل لازم برای معنادار بودن اندیکاتورها (EMA200 و غیره)
+        min_bars_required = 210
 
         all_times = set()
         for sym in self.data:
@@ -279,33 +298,36 @@ class Backtester:
                 if len(idx) == 0:
                     continue
                 idx = idx[0]
-                row = self.indicators[sym].iloc[idx]
+
+                # فقط داده‌ی تا همین لحظه (idx) در اختیار تحلیل قرار می‌گیرد؛
+                # هیچ کندل آینده‌ای دیده نمی‌شود (رفع Look-Ahead Bias).
+                if idx + 1 < min_bars_required:
+                    continue
+                df_slice = self.indicators[sym].iloc[:idx + 1]
+                row = df_slice.iloc[-1]
 
                 if not self.trade_engine.is_position_open(sym):
-                    ms = self.market_structures[sym]
+                    ms, advanced_data = self._analyze_at(sym, df_slice)
                     from trend import TrendEngine
-                    strength = TrendEngine.strength(self.indicators[sym])
+                    strength = TrendEngine.strength(df_slice)
 
-                    # محاسبه MTF از داده اصلی (۱ ساعته) با استفاده از تایم‌فریم‌های بالاتر
-                    mtf_signal = self._calculate_mtf_signal(self.indicators[sym])
-
-                    # Advanced analytics (پیش‌محاسبه شده)
-                    adv_data = self.advanced_analytics.get(sym)
+                    # محاسبه MTF فقط از داده‌ی تا لحظه‌ی جاری
+                    mtf_signal = self._calculate_mtf_signal(df_slice)
 
                     analysis = ScoringEngine.calculate(
-                        self.indicators[sym],
+                        df_slice,
                         mtf_signal,
                         market_structure=ms,
                         strength=strength,
-                        advanced_data=adv_data,
+                        advanced_data=advanced_data,
                     )
 
                     decision = DecisionEngine.evaluate(
-                        self.indicators[sym],
+                        df_slice,
                         ms,
                         mtf_signal,
                         strength,
-                        adv_data,
+                        advanced_data,
                         analysis["score"],
                         analysis["breakout"],
                         analysis["reasons"],
@@ -330,26 +352,26 @@ class Backtester:
                             quantity = RiskManager.calculate_position_size(
                                 entry_price, sl, self.portfolio.capital, side
                             )
-                            if quantity <= 0:
-                                continue
 
-                            self.trade_engine.open_trade(
-                                symbol=sym,
-                                side=side,
-                                entry_time=ts,
-                                entry_price=entry_price,
-                                stop_loss=sl,
-                                take_profit=tp,
-                                quantity=quantity,
-                                score=analysis["score"],
-                                confidence=decision["confidence"],
-                                entry_quality=decision["entry_quality"],
-                                trade_readiness=decision["trade_readiness"],
-                                risk_level=decision["summary"]["Risk Level"],
-                                market_bias=decision["summary"]["Market Bias"],
-                                reasons=analysis["reasons"],
-                                warnings=analysis["warnings"]
-                            )
+                            # اگر حجم محاسبه‌شده صفر باشد (سرمایه ناکافی/ریسک نامعتبر)، معامله باز نمی‌شود
+                            if quantity > 0:
+                                self.trade_engine.open_trade(
+                                    symbol=sym,
+                                    side=side,
+                                    entry_time=ts,
+                                    entry_price=entry_price,
+                                    stop_loss=sl,
+                                    take_profit=tp,
+                                    quantity=quantity,
+                                    score=analysis["score"],
+                                    confidence=decision["confidence"],
+                                    entry_quality=decision["entry_quality"],
+                                    trade_readiness=decision["trade_readiness"],
+                                    risk_level=decision["summary"]["Risk Level"],
+                                    market_bias=decision["summary"]["Market Bias"],
+                                    reasons=analysis["reasons"],
+                                    warnings=analysis["warnings"]
+                                )
 
             equity = self.portfolio.capital + sum(
                 self.trade_engine.calculate_unrealized_pnl(sym, ts, self.data[sym])
