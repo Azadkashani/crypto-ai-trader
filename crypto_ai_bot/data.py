@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Data Engine (Gate.io Futures – Ultra-Strict Filter + No Grid Bots)
+Market Data Engine (Gate.io Futures – Ultra-Strict + No Grid Bots)
 """
 
 import ccxt
@@ -43,27 +43,21 @@ class MarketData:
     def get_usdt_symbols(self):
         """
         دریافت فقط قراردادهای واقعی فیوچرز دائمی (Perpetual Swap) USDT از Gate.io.
-        تمام Grid Bots، توکن‌های سهام، ربات‌ها، ETFها و نمادهای غیرفیوچرزی حذف می‌شوند.
+        تمام Grid Bots، توکن‌های سهام، ربات‌ها، ETFها و نمادهای غیرفیوچرزی **کاملاً** حذف می‌شوند.
+        اگر تعداد کمتر از ۵۰ باشد، همان تعداد تحلیل می‌شود.
         """
         print("Loading futures markets...")
         markets = self.exchange.load_markets()
         usdt_futures = []
 
         EXCLUDE_PATTERNS = [
-            # ربات‌ها، استراتژی‌ها، شاخص‌ها
             "BOT", "GRID", "STRATEGY", "API", "SYNTH", "INDEX",
             "DEX", "ALPHA", "QUAN",
-            # تست و دمو
             "TEST", "DEMO", "INTERNAL",
-            # وضعیت غیرفعال
             "INACTIVE", "DELISTED", "SETTLEMENT",
-            # توکن‌های اهرم‌دار و ETF
             "BEAR", "BULL", "UP", "DOWN", "ETF",
-            # سهام توکنیزه‌شده
             "TOKENIZED", "STOCK", "EQUITY", "SHARE",
-            # پسوندهای معروف توکن‌های سهام
-            "X/USDT",
-            # لیست صریح سهام و نمادهای غیرفیوچرزی
+            "X/USDT",   # تمام سهام
             "MU/USDT", "SOXL/USDT", "SOXS/USDT", "TSLA/USDT", "AAPL/USDT",
             "GOOGL/USDT", "AMZN/USDT", "MSFT/USDT", "NFLX/USDT",
             "NVDA/USDT", "META/USDT", "BABA/USDT", "SPY/USDT",
@@ -75,8 +69,9 @@ class MarketData:
             "QQQX/USDT", "DRAM/USDT", "MRVL/USDT", "SAMSUNG/USDT",
             "BANK/USDT", "CAP/USDT", "US/USDT",
             "HOME/USDT", "GIGGLE/USDT", "RATS/USDT", "PUMP/USDT",
-            # موارد جدید گزارش‌شده
-            "SNOW/USDT",  # ← Futures Grid
+            "SNOW/USDT", "EWY/USDT", "XIAOMI/USDT", "BE/USDT",
+            "ICNT/USDT", "VANRY/USDT", "LITE/USDT", "SKYAI/USDT",
+            "ZHIPU/USDT", "NBIS/USDT", "BICO/USDT", "TAO/USDT",
         ]
 
         for symbol, market in markets.items():
@@ -92,18 +87,16 @@ class MarketData:
             if not market.get("active", False):
                 continue
 
-            # بررسی وضعیت معاملاتی و حذف Grid Bots
+            # بررسی کامل info برای فیلتر Grid
             info = market.get("info", {})
             if info:
                 trade_status = info.get("trade_status", "").lower()
                 if trade_status not in ("tradable", ""):
                     continue
 
-                # فیلتر جدید: حذف futures grid bots
-                # برخی از این نمادها ممکن است type دیگری داشته باشند یا trade_mode مشخصی
-                if "grid" in info.get("trade_mode", "").lower():
-                    continue
-                if "grid" in info.get("type", "").lower():
+                # فیلتر نهایی: هر فیلدی که "grid" در آن باشد → حذف
+                info_str = str(info).lower()
+                if "grid" in info_str:
                     continue
 
             # حذف بر اساس الگوهای ممنوعه
@@ -120,7 +113,7 @@ class MarketData:
             print("No valid futures contracts found.")
             return []
 
-        print(f"Total Valid Perpetual Swaps: {len(usdt_futures)}")
+        print(f"Total Valid Perpetual Swaps (no grid): {len(usdt_futures)}")
 
         # دریافت حجم ۲۴ ساعته
         try:
