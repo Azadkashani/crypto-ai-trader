@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Real News/Sentiment)
+Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Volume)
 """
 
 from market_structure import MarketStructure
@@ -22,7 +22,6 @@ from decision_engine import DecisionEngine
 from risk_manager import RiskManager
 from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
-from advanced_analytics import AdvancedAnalytics
 
 # News & Sentiment imports
 from news_engine import NewsEngine
@@ -32,6 +31,9 @@ from market_sentiment import MarketSentiment
 from news_scoring import NewsScoring
 from economic_calendar import EconomicCalendar
 from risk_events import RiskEvents
+
+# Advanced Analytics
+from advanced_analytics import AdvancedAnalytics
 
 
 class MarketScanner:
@@ -94,14 +96,15 @@ class MarketScanner:
 
                 mtf_signal, mtf_details = self.analyze_mtf(symbol)
 
-                # قبلاً اینجا همیشه None بود و به همین دلیل هیچ‌کدام از ماژول‌های
-                # تحلیل پیشرفته (liquidity sweep, FVG, order block, VWAP, دیورجانس‌ها، ...)
-                # هیچ‌وقت اجرا نمی‌شدند، با اینکه در config.py فعال (True) بودند.
+                # === Advanced Analytics واقعی ===
+                advanced_data = self.advanced.analyze(df, market_structure, symbol)
+
+                # === حجم ۲۴ ساعته (USDT) ===
                 try:
-                    advanced_data = self.advanced.analyze(df, market_structure=market_structure, symbol=symbol)
-                except Exception as e:
-                    print(f"Advanced analytics failed for {symbol}: {e}")
-                    advanced_data = None
+                    ticker = self.data.exchange.fetch_ticker(symbol)
+                    volume_24h = ticker.get("quoteVolume", 0) or 0
+                except Exception:
+                    volume_24h = 0
 
                 # === News Score ===
                 news_score_val = 0
@@ -158,19 +161,21 @@ class MarketScanner:
                 resistance = round(df["high"].tail(50).max(), 4)
                 entry = float(last["close"])
 
+                # ----- محاسبه SL و TP -----
                 if "SELL" in action:
                     stop_loss = entry + (atr_val * 1.5)
-                    take_profit = entry - (atr_val * 3)
                     side = "sell"
                 else:
                     stop_loss = entry - (atr_val * 1.5)
-                    take_profit = entry + (atr_val * 3)
                     side = "buy"
 
-                # اهرم پویا
-                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
+                if side == "sell":
+                    tp1 = entry - (atr_val * 3)
+                else:
+                    tp1 = entry + (atr_val * 3)
 
-                # Input % (درصد سرمایهٔ پیشنهادی برای ریسک ۱٪)
+                # اهرم پویا و Input%
+                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, side)
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
                 if sl_pct < 0.01:
                     input_pct = 100.0
@@ -194,9 +199,10 @@ class MarketScanner:
                     "Resistance": resistance,
                     "Entry": entry,
                     "StopLoss": stop_loss,
-                    "TakeProfit": take_profit,
+                    "TP1": tp1,
                     "Leverage": suggested_leverage,
                     "InputPct": input_pct,
+                    "VolumeUSDT": round(volume_24h, 2),
                     "Volume Breakout": breakout,
                     "Reasons": ", ".join(reasons),
                     "Warnings": ", ".join(warnings),
