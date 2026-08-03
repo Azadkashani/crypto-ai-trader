@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Advanced Scoring Engine (Fully Symmetric for Long & Short)
+Advanced Scoring Engine (Fully Symmetric for Long & Short, with Directional News)
 """
 
 from config import BUY_SCORE, WATCH_SCORE
@@ -146,7 +146,7 @@ class ScoringEngine:
             score -= 8 * direction
             warnings.append("Opposing CHoCH (active)")
 
-        # 11. Advanced Analytics (جهت‌دار کردن موارد مهم)
+        # 11. Advanced Analytics (همه جهت‌دار شده‌اند)
         if advanced_data:
             # -- Liquidity Sweep
             ls = advanced_data.get("liquidity_sweep")
@@ -338,10 +338,10 @@ class ScoringEngine:
                     score += 4
                     reasons.append("High BTC Correlation")
 
-        # ==================== افزودن امتیاز اخبار و احساسات ====================
-        score += news_score + sentiment_score
-
-        # **دیگر نیازی به وارون‌سازی دستی نیست؛ همه چیز با direction کنترل می‌شود.**
+        # ==================== افزودن امتیاز اخبار و احساسات (جهت‌دار) ====================
+        # خبر مثبت در روند صعودی خوب است، در روند نزولی بد
+        score += news_score * direction
+        score += sentiment_score * direction
 
         # Base Score (علامت‌دار)
         base_score = score
@@ -411,7 +411,9 @@ class ScoringEngine:
         if macd_div and macd_div.get("bearish_div"):
             conf -= 4
 
-        conf += news_score * 0.5 + sentiment_score * 0.3
+        # News و Sentiment در Confidence نیز جهت‌دار
+        conf += news_score * 0.5 * direction
+        conf += sentiment_score * 0.3 * direction
 
         conf = max(10, min(100, conf))
 
@@ -438,7 +440,7 @@ class ScoringEngine:
 
         return {
             "base_score": int(base_score),
-            "mtf_bonus": int(mtf_delta * direction),   # نمایش جهت‌دار
+            "mtf_bonus": int(mtf_delta * direction),
             "score": int(round(score)),
             "confidence": int(conf),
             "breakout": breakout,
