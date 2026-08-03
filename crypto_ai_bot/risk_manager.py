@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Risk Manager – Position Sizing & Dynamic Leverage (1% Risk Rule, no minimum qty)
+Risk Manager – Position Sizing & Dynamic Leverage (1% Risk Rule)
 """
 
 from config import RISK_PER_TRADE, LEVERAGE as MAX_LEVERAGE
@@ -15,9 +15,11 @@ class RiskManager:
         else:
             sl_distance = stop_loss - entry
         if sl_distance <= 0:
-            return 0.0
+            return 0
         quantity = risk_amount / sl_distance
-        return round(quantity, 8)
+        # توجه: کف مصنوعی ۱ واحد کامل حذف شد چون قانون ریسک ۱٪ را نقض می‌کرد
+        # (مثلاً برای BTC یعنی خرید اجباری ۱ کوین کامل صرف‌نظر از ریسک واقعی).
+        return max(0.0, round(quantity, 8))
 
     @staticmethod
     def calculate_margin(entry, quantity, leverage):
@@ -37,6 +39,16 @@ class RiskManager:
 
     @staticmethod
     def suggest_leverage(entry, stop_loss, side, max_leverage=MAX_LEVERAGE):
+        """
+        محاسبهٔ اهرم طبق ریسک ۱٪ و درصد حد ضرر.
+
+        اگر حد ضرر کمتر از ۱٪ باشد:
+            Leverage = (1% / stop_loss%) → اهرم افزایش می‌یابد، Input% ثابت ۱۰۰٪.
+            مثال: حد ضرر ۰.۵٪ → Leverage = 2
+
+        اگر حد ضرر ≥ ۱٪ باشد:
+            Leverage = 1 (ثابت)
+        """
         if entry <= 0:
             return 1
         if side in ("buy", "long"):
@@ -49,7 +61,9 @@ class RiskManager:
         if stop_loss_pct == 0:
             return 1
         if stop_loss_pct < RISK_PER_TRADE:
+            # حد ضرر کمتر از ۱٪ → Leverage افزایش می‌یابد
             leverage = RISK_PER_TRADE / stop_loss_pct
             return min(max_leverage, max(1, int(leverage)))
         else:
+            # حد ضرر ≥ ۱٪ → Leverage ثابت ۱
             return 1
