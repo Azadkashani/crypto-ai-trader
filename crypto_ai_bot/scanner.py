@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner + Multi Timeframe Engine (Signal-Only + Dynamic Leverage + Input% + Enhanced Fundamental Analysis + Trade Planner)
+Market Scanner – Trade Planner integration, original_side, dynamic report
 """
 
 from market_structure import MarketStructure
@@ -25,7 +25,7 @@ from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
 from trade_planner import TradePlanner
 
-# News & Sentiment imports
+# News & Sentiment
 from news_engine import NewsEngine
 from news_analyzer import NewsAnalyzer
 from news_mapping import NewsMapping
@@ -72,7 +72,7 @@ class MarketScanner:
         symbols = self.get_symbols()
         print(f"Scanning {len(symbols)} symbols...\n")
 
-        # === دریافت اخبار و تحلیل اولیه ===
+        # اخبار و تحلیل اولیه
         all_raw_news = []
         analyzed_news = []
         if ENABLE_NEWS_ENGINE:
@@ -88,13 +88,12 @@ class MarketScanner:
 
         for symbol in symbols:
             try:
-                # === دریافت حجم ۲۴ ساعته و فیلتر حجم ===
+                # حجم و فیلتر
                 try:
                     ticker = self.data.exchange.fetch_ticker(symbol)
                     volume_24h = ticker.get("quoteVolume", 0) or 0
-                except Exception:
+                except:
                     volume_24h = 0
-
                 if volume_24h < MIN_24H_VOLUME:
                     continue
 
@@ -104,14 +103,11 @@ class MarketScanner:
                 market_structure = MarketStructure.analyze(df)
                 raw_trend = market_structure["trend"]
                 trend = raw_trend.capitalize()
-
                 strength = TrendEngine.strength(df)
-
-                mtf_signal, mtf_details = self.analyze_mtf(symbol)
-
+                mtf_signal, _ = self.analyze_mtf(symbol)
                 advanced_data = self.advanced.analyze(df, market_structure, symbol)
 
-                # === News Score ===
+                # News & Sentiment
                 news_score_val = 0
                 sentiment_score_val = 0
                 relevant_news = []
@@ -131,6 +127,7 @@ class MarketScanner:
                     sentiment_score_val = scores["sentiment_score"]
                     relevant_news = related_news
 
+                # Scoring
                 analysis = ScoringEngine.calculate(
                     df, mtf_signal,
                     market_structure=market_structure,
@@ -139,7 +136,6 @@ class MarketScanner:
                     news_score=news_score_val,
                     sentiment_score=sentiment_score_val
                 )
-
                 buy_score = analysis["buy_score"]
                 sell_score = analysis["sell_score"]
                 score = analysis["score"]
@@ -149,7 +145,7 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # ===== Decision (فقط برای تعیین جهت اولیه) =====
+                # Decision اولیه
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data,
@@ -163,43 +159,40 @@ class MarketScanner:
                     sentiment_score=sentiment_score_val
                 )
 
-                action = decision["action"]
-                confidence = decision["confidence"]
-                trade_readiness = decision["trade_readiness"]
-                entry_quality = decision["entry_quality"]
-                summary = decision["summary"]
+                initial_action = decision["action"]
+                # ذخیره جهت اولیه قبل از بازنویسی
+                original_side = "sell" if "SELL" in initial_action else "buy"
 
-                last = df.iloc[-1]
-                atr_val = last["ATR"] if last["ATR"] > 0 else 0.0001
-                support = round(df["low"].tail(50).min(), 4)
-                resistance = round(df["high"].tail(50).max(), 4)
-                entry = float(last["close"])
+                entry = float(df.iloc[-1]["close"])
+                atr_val = df["ATR"].iloc[-1] if df["ATR"].iloc[-1] > 0 else 0.0001
 
-                # ===== Trade Planner =====
-                if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
-                    plan = self.planner.plan(df, market_structure, advanced_data, action, entry)
-                    if not plan["valid"]:
-                        action = "WATCH"
-                        summary["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
-                        summary["Decision Reason"] = summary["Current Status"]
-                    stop_loss = plan["stop_loss"]
-                    tp1 = plan["targets"][0]["price"] if plan["targets"] else entry + (atr_val * 3)
-                    targets = plan["targets"]
-                    rr = plan["rr"]
-                else:
-                    # در صورت WATCH یا NO TRADE از ATR ساده استفاده می‌کنیم (فقط برای نمایش)
-                    stop_loss = entry - (atr_val * 1.5) if "SELL" not in action else entry + (atr_val * 1.5)
-                    tp1 = entry + (atr_val * 3) if "SELL" not in action else entry - (atr_val * 3)
-                    targets = []
-                    rr = 0
+                # Trade Planner برای **همه** (حتی WATCH/NO TRADE)
+                plan = self.planner.plan(df, market_structure, advanced_data, initial_action, entry)
 
-                # اهرم پویا و Input%
-                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, "sell" if "SELL" in action else "buy")
+                # اگر معامله معتبر نبود، action را به WATCH تغییر بده
+                final_action = initial_action
+                if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL") and not plan["valid"]:
+                    final_action = "WATCH"
+                    decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
+                    decision["summary"]["Decision Reason"] = decision["summary"]["Current Status"]
+
+                # مقادیر نهایی
+                stop_loss = plan["stop_loss"]
+                targets = plan["targets"]
+                tp1 = targets[0]["price"] if targets else entry + (atr_val * 3)
+                rr = plan["rr"]
+                trade_valid = plan["valid"]
+
+                # Leverage و Input
+                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, original_side)
                 sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
                 if sl_pct < 0.01:
                     input_pct = 100.0
                 else:
                     input_pct = round((1.0 / (sl_pct * 100)) * 100, 2)
+                # ضریب اطمینان
+                conf_factor = 0.8 + 0.2 * (decision["confidence"] / 100.0)
+                input_pct = round(input_pct * conf_factor, 2)
 
                 results.append({
                     "Symbol": symbol,
@@ -207,15 +200,16 @@ class MarketScanner:
                     "Trend": trend,
                     "Strength": strength,
                     "MTF_Signal": mtf_signal,
-                    "MTF_Details": mtf_details,
-                    "Confidence": confidence,
-                    "RSI": round(last["RSI"], 2),
+                    "Confidence": decision["confidence"],
+                    "RSI": round(df["RSI"].iloc[-1], 2),
                     "Buy Score": buy_score,
                     "Sell Score": sell_score,
                     "Score": score,
-                    "Action": action,
-                    "Support": support,
-                    "Resistance": resistance,
+                    "Action": final_action,
+                    "Market Signal": trend,
+                    "Trade Valid": trade_valid,
+                    "Support": round(df["low"].tail(50).min(), 4),
+                    "Resistance": round(df["high"].tail(50).max(), 4),
                     "Entry": entry,
                     "StopLoss": stop_loss,
                     "TP1": tp1,
@@ -229,9 +223,9 @@ class MarketScanner:
                     "Warnings": ", ".join(warnings),
                     "Weighted Reasons": weighted_reasons,
                     "Weighted Warnings": weighted_warnings,
-                    "Summary": summary,
-                    "Entry Quality": entry_quality,
-                    "Trade Readiness": trade_readiness,
+                    "Summary": decision["summary"],
+                    "Entry Quality": decision["entry_quality"],
+                    "Trade Readiness": decision["trade_readiness"],
                     "News Score": news_score_val,
                     "Sentiment Score": sentiment_score_val,
                     "Global Sentiment": global_sentiment,
