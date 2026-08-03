@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.1
-Market Data Engine (Gate.io Futures – Ultra-Strict Perpetual Swap Filter)
+Market Data Engine (Gate.io Futures – Ultra-Strict Filter + No Grid Bots)
 """
 
 import ccxt
@@ -43,13 +43,12 @@ class MarketData:
     def get_usdt_symbols(self):
         """
         دریافت فقط قراردادهای واقعی فیوچرز دائمی (Perpetual Swap) USDT از Gate.io.
-        تمام توکن‌های سهام، ربات‌ها، ETFها، استراتژی‌ها و نمادهای غیرفیوچرزی حذف می‌شوند.
+        تمام Grid Bots، توکن‌های سهام، ربات‌ها، ETFها و نمادهای غیرفیوچرزی حذف می‌شوند.
         """
         print("Loading futures markets...")
         markets = self.exchange.load_markets()
         usdt_futures = []
 
-        # الگوهای ممنوعه (هر نمادی که شامل این عبارات باشد حذف می‌شود)
         EXCLUDE_PATTERNS = [
             # ربات‌ها، استراتژی‌ها، شاخص‌ها
             "BOT", "GRID", "STRATEGY", "API", "SYNTH", "INDEX",
@@ -60,11 +59,11 @@ class MarketData:
             "INACTIVE", "DELISTED", "SETTLEMENT",
             # توکن‌های اهرم‌دار و ETF
             "BEAR", "BULL", "UP", "DOWN", "ETF",
-            # سهام توکنیزه‌شده (کاملاً حذف)
+            # سهام توکنیزه‌شده
             "TOKENIZED", "STOCK", "EQUITY", "SHARE",
             # پسوندهای معروف توکن‌های سهام
-            "X/USDT",     # هر نمادی که به X/USDT ختم شود (مثل AAPLX, TSLAX, ...)
-            # لیست صریح سهام معروف (در صورت عدم پوشش با پسوند X)
+            "X/USDT",
+            # لیست صریح سهام و نمادهای غیرفیوچرزی
             "MU/USDT", "SOXL/USDT", "SOXS/USDT", "TSLA/USDT", "AAPL/USDT",
             "GOOGL/USDT", "AMZN/USDT", "MSFT/USDT", "NFLX/USDT",
             "NVDA/USDT", "META/USDT", "BABA/USDT", "SPY/USDT",
@@ -75,8 +74,9 @@ class MarketData:
             "CXMT/USDT", "SKHYNIX/USDT", "SNDK/USDT",
             "QQQX/USDT", "DRAM/USDT", "MRVL/USDT", "SAMSUNG/USDT",
             "BANK/USDT", "CAP/USDT", "US/USDT",
-            # سایر موارد مشکوک (در صورت بروز خطاهای جدید)
             "HOME/USDT", "GIGGLE/USDT", "RATS/USDT", "PUMP/USDT",
+            # موارد جدید گزارش‌شده
+            "SNOW/USDT",  # ← Futures Grid
         ]
 
         for symbol, market in markets.items():
@@ -92,11 +92,18 @@ class MarketData:
             if not market.get("active", False):
                 continue
 
-            # بررسی وضعیت معاملاتی از info (مخصوص Gate.io)
+            # بررسی وضعیت معاملاتی و حذف Grid Bots
             info = market.get("info", {})
             if info:
                 trade_status = info.get("trade_status", "").lower()
                 if trade_status not in ("tradable", ""):
+                    continue
+
+                # فیلتر جدید: حذف futures grid bots
+                # برخی از این نمادها ممکن است type دیگری داشته باشند یا trade_mode مشخصی
+                if "grid" in info.get("trade_mode", "").lower():
+                    continue
+                if "grid" in info.get("type", "").lower():
                     continue
 
             # حذف بر اساس الگوهای ممنوعه
