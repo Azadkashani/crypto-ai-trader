@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value, Trade Quality Score, Watch Info
+Market Scanner – Fixed ExecutionAnalyzer initialization
 """
 
 from market_structure import MarketStructure
@@ -145,7 +145,7 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # Decision اولیه (بدون پارامترهای plan)
+                # Decision اولیه
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data,
@@ -166,6 +166,21 @@ class MarketScanner:
 
                 plan = self.planner.plan(df, market_structure, advanced_data, initial_action, entry)
 
+                # ===== مقداردهی اولیهٔ exec_analysis (پیش‌فرض امن) =====
+                exec_analysis = {
+                    "execution_type": "Unknown",
+                    "execution_quality": 0,
+                    "liquidity_risk": 0
+                }
+                if ENABLE_LIQUIDITY_EXECUTION:
+                    try:
+                        exec_analysis = ExecutionAnalyzer.analyze(
+                            df, market_structure, advanced_data, initial_action, entry
+                        )
+                    except Exception:
+                        # در صورت خطا، همان مقادیر پیش‌فرض باقی می‌ماند
+                        pass
+
                 # Adaptive Position Sizing
                 if ENABLE_ADAPTIVE_POSITION_SIZING:
                     market_structure_quality = 1.0 if market_structure.get("trend") in ("bullish", "bearish") else 0.5
@@ -180,7 +195,6 @@ class MarketScanner:
                     std_vol = df["volume"].tail(20).std()
                     vol_z = (df["volume"].iloc[-1] - avg_vol) / std_vol if std_vol != 0 else 0
 
-                    # همبستگی BTC
                     btc_corr = None
                     corr_data = advanced_data.get("correlation")
                     if corr_data and "btc_correlation" in corr_data:
@@ -190,20 +204,22 @@ class MarketScanner:
                         atr_val, df["ADX"].iloc[-1], market_structure_quality,
                         decision["confidence"], decision["trade_readiness"],
                         mtf_agreement, vol_z, news_score_val, sentiment_score_val,
-                        macro_risk_active, execution_quality=exec_analysis.get("execution_quality", 50) if ENABLE_LIQUIDITY_EXECUTION else 50,
-                        ev=ev, btc_corr=btc_corr, warnings=warnings
+                        macro_risk_active,
+                        execution_quality=exec_analysis["execution_quality"],
+                        ev=0,  # EV هنوز محاسبه نشده، اما بعداً به‌روز می‌شود
+                        btc_corr=btc_corr,
+                        warnings=warnings
                     )
                 else:
                     risk_pct = cfg.RISK_PER_TRADE
 
-                exec_analysis = {}
-                if ENABLE_LIQUIDITY_EXECUTION:
-                    exec_analysis = ExecutionAnalyzer.analyze(df, market_structure, advanced_data, initial_action, entry)
-
-                # EV جدید
+                # EV
                 ev = 0.0
                 if ENABLE_EXPECTED_VALUE and plan["targets"]:
                     volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
+                    avg_vol = df["volume"].tail(20).mean()
+                    std_vol = df["volume"].tail(20).std()
+                    vol_z = (df["volume"].iloc[-1] - avg_vol) / std_vol if std_vol != 0 else 0
                     ev = ExpectedValue.calculate(
                         plan["targets"], entry, plan.get("stop_loss", entry - atr_val),
                         decision["confidence"], decision["trade_readiness"],
@@ -211,6 +227,7 @@ class MarketScanner:
                         volatility_state, vol_z
                     )
 
+                # تصمیم‌گیری نهایی
                 final_action = initial_action
                 if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
                     if not plan["valid"]:
@@ -219,7 +236,7 @@ class MarketScanner:
                     elif ENABLE_EXPECTED_VALUE and ev <= MIN_EXPECTED_VALUE:
                         final_action = "WATCH"
                         decision["summary"]["Current Status"] += f" EV={ev}R"
-                    elif ENABLE_LIQUIDITY_EXECUTION and exec_analysis.get("execution_quality", 100) < MIN_EXECUTION_QUALITY:
+                    elif ENABLE_LIQUIDITY_EXECUTION and exec_analysis["execution_quality"] < MIN_EXECUTION_QUALITY:
                         final_action = "WATCH"
                         decision["summary"]["Current Status"] += f" ExecQual={exec_analysis['execution_quality']}"
 
@@ -232,14 +249,12 @@ class MarketScanner:
                 # Trade Quality Score
                 trade_quality = 0
                 if trade_valid:
-                    exec_q = exec_analysis.get("execution_quality", 50)
-                    liq_risk = exec_analysis.get("liquidity_risk", 0)
-                    ev_norm = max(0, min(100, (ev + 2) * 25))  # تبدیل EV به مقیاس 0-100
-                    risk_score = 100 - (risk_pct / MAX_POSITION_RISK * 100) if MAX_POSITION_RISK > 0 else 50
+                    exec_q = exec_analysis["execution_quality"]
+                    liq_risk = exec_analysis["liquidity_risk"]
+                    ev_norm = max(0, min(100, (ev + 2) * 25))
+                    risk_score = 100 - (risk_pct / cfg.MAX_POSITION_RISK * 100) if cfg.MAX_POSITION_RISK > 0 else 50
                     trade_quality = int(0.3 * decision["confidence"] + 0.2 * exec_q + 0.2 * ev_norm +
                                        0.15 * (100 - min(liq_risk, 100)) + 0.15 * risk_score)
-                else:
-                    trade_quality = 0
 
                 # Watch Info
                 watch_info = {}
@@ -261,11 +276,13 @@ class MarketScanner:
                         watch_info["Invalidation"] = f"Above {stop_loss:.4f}"
                         watch_info["Direction"] = "Bearish"
 
-                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, original_side,
-                                                                  volatility=volatility_state if ENABLE_EXPECTED_VALUE else "Normal",
-                                                                  confidence=decision["confidence"],
-                                                                  execution_quality=exec_analysis.get("execution_quality", 50),
-                                                                  ev=ev)
+                suggested_leverage = RiskManager.suggest_leverage(
+                    entry, stop_loss, original_side,
+                    volatility=volatility_state if ENABLE_EXPECTED_VALUE else "Normal",
+                    confidence=decision["confidence"],
+                    execution_quality=exec_analysis["execution_quality"],
+                    ev=ev
+                )
                 input_pct = risk_pct * 100
 
                 position_risk_reason = ""
@@ -313,8 +330,9 @@ class MarketScanner:
                     "InputPct": input_pct,
                     "PositionRisk": f"{risk_pct*100:.2f}%",
                     "PositionRiskReason": position_risk_reason,
-                    "ExecutionType": exec_analysis.get("execution_type", "N/A"),
-                    "ExecutionQuality": exec_analysis.get("execution_quality", 0),
+                    "ExecutionType": exec_analysis["execution_type"],
+                    "ExecutionQuality": exec_analysis["execution_quality"],
+                    "LiquidityRisk": exec_analysis["liquidity_risk"],
                     "ExpectedValue": f"{ev:+.2f}R",
                     "TradeQualityScore": trade_quality,
                     "WatchInfo": watch_info,
