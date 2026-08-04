@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Wider Stop/Target Margins, Optimized EV
+Institutional‑Grade Trade Planner – Adaptive RR with EV support
 """
 
 import numpy as np
@@ -14,8 +14,8 @@ class TradePlanner:
         self.atr_buffer_factor = 0.2
         self.cluster_pct = 0.1
         self.max_targets = 3
-        self.min_sl_distance_atr = 0.8          # افزایش یافت
-        self.min_target_distance_atr = 0.8       # افزایش یافت
+        self.min_sl_distance_atr = 0.8
+        self.min_target_distance_atr = 0.8
 
     # -----------------------------------------------------------------
     def plan(self, df: pd.DataFrame, market_structure: dict,
@@ -33,14 +33,14 @@ class TradePlanner:
 
         # 1. Gather all SL candidates
         sl_candidates = self._gather_sl_candidates(side, entry, ms=market_structure, adv=advanced_data)
-        # 2. Gather all TP candidates (filtered with min_target_distance)
+        # 2. Gather all TP candidates
         tp_candidates = self._gather_tp_candidates(side, entry, atr, ms=market_structure, adv=advanced_data)
 
         if not tp_candidates:
             tp_candidates = self._atr_fallback_targets(side, entry, atr, count=3)
 
+        # Cluster and sort
         clustered_tp = self._cluster_levels(tp_candidates, entry, atr)
-
         if side == "buy":
             clustered_tp.sort(key=lambda x: x["price"])
         else:
@@ -110,7 +110,7 @@ class TradePlanner:
         except:
             return None
 
-    # --- SL candidates unchanged except increased min_sl_distance_atr used in validation ---
+    # --- SL candidates ---
     def _gather_sl_candidates(self, side, entry, ms, adv):
         cand = []
         for s in ms.get("swing_highs", []):
@@ -167,7 +167,7 @@ class TradePlanner:
         else:
             return entry + atr * mult
 
-    # --- TP candidates with increased min distance ---
+    # --- TP candidates ---
     def _gather_tp_candidates(self, side, entry, atr, ms, adv):
         levels = []
         min_dist = atr * self.min_target_distance_atr
@@ -233,7 +233,6 @@ class TradePlanner:
 
         return levels
 
-    # --- Clustering, selection, fallback unchanged ---
     def _cluster_levels(self, levels, entry, atr):
         if not levels: return []
         threshold = entry * self.cluster_pct / 100.0
@@ -320,9 +319,9 @@ class TradePlanner:
     def _optimize_sl_and_validate(self, entry, sl_candidates, targets, side, atr, ms):
         best_ev = -999
         best_sl = None
-        best_target = None
-        best_reward = 0
-        best_rr = 0
+        best_rr = 0.0
+        best_reward = 0.0
+        best_prob = 0.0
         reasons = []
 
         for sl_cand in sl_candidates:
@@ -337,19 +336,23 @@ class TradePlanner:
                 reward = abs(t["price"] - entry)
                 rr = reward / risk if risk > 0 else 0
                 prob = t.get("probability", 0.5)
-                if rr >= self.min_rr and prob >= 0.3:
-                    ev = prob * rr - (1 - prob)
-                    if ev > best_ev:
-                        best_ev = ev
-                        best_rr = rr
-                        best_reward = reward
-                        best_sl = sl_price
-                        best_target = t
+                ev = prob * rr - (1 - prob)
+                if ev > best_ev:
+                    best_ev = ev
+                    best_rr = rr
+                    best_reward = reward
+                    best_prob = prob
+                    best_sl = sl_price
 
         if best_sl is not None:
             risk_final = abs(entry - best_sl)
             for t in targets:
                 t["rr"] = round(abs(t["price"] - entry) / risk_final, 2) if risk_final > 0 else 0.0
+
+            valid = best_rr >= self.min_rr and best_prob >= 0.3
+            if not valid:
+                reasons.append(f"No target meets minimum RR ({self.min_rr}) – best RR={best_rr:.2f}, EV={best_ev:.2f}")
+
             return {
                 "entry": entry,
                 "stop_loss": round(best_sl, 4),
@@ -357,19 +360,30 @@ class TradePlanner:
                 "risk": round(risk_final, 4),
                 "reward": round(best_reward, 4),
                 "rr": round(best_rr, 2),
-                "valid": True,
-                "reasons": reasons
+                "valid": valid,
+                "reasons": reasons,
+                "best_ev": round(best_ev, 2),
+                "best_prob": round(best_prob, 2)
             }
 
         atr_sl = self._atr_sl(side, entry, atr, ms)
         risk_fallback = abs(entry - atr_sl)
-        max_rr = 0
+        max_rr = 0.0
+        max_ev = -999
+        best_prob = 0.0
         for t in targets:
             rr = abs(t["price"] - entry) / risk_fallback if risk_fallback > 0 else 0
-            if rr > max_rr: max_rr = rr
+            prob = t.get("probability", 0.5)
+            ev = prob * rr - (1 - prob)
+            if rr > max_rr:
+                max_rr = rr
+            if ev > max_ev:
+                max_ev = ev
+                best_prob = prob
         for t in targets:
             t["rr"] = round(abs(t["price"] - entry) / risk_fallback, 2) if risk_fallback > 0 else 0.0
-        reasons.append(f"No target meets minimum RR ({self.min_rr}) with any valid stop loss.")
+
+        reasons.append(f"No valid stop loss found – best RR={max_rr:.2f}, EV={max_ev:.2f}")
         return {
             "entry": entry,
             "stop_loss": round(atr_sl, 4),
@@ -378,5 +392,7 @@ class TradePlanner:
             "reward": 0,
             "rr": round(max_rr, 2),
             "valid": False,
-            "reasons": reasons
+            "reasons": reasons,
+            "best_ev": round(max_ev, 2),
+            "best_prob": round(best_prob, 2)
         }
