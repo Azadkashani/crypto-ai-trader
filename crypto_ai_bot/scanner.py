@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Trade Planner integration, original_side, dynamic report
+Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value
 """
 
 from market_structure import MarketStructure
@@ -13,6 +13,8 @@ from config import (
     ENABLE_TRENDLINE_BREAK, ENABLE_FIBONACCI, ENABLE_SESSION_DETECTION,
     ENABLE_MARKET_REGIME, ENABLE_CORRELATION_FILTER,
     ENABLE_NEWS_ENGINE, ENABLE_SENTIMENT_ENGINE, ENABLE_ECONOMIC_CALENDAR,
+    ENABLE_ADAPTIVE_POSITION_SIZING, ENABLE_LIQUIDITY_EXECUTION, ENABLE_EXPECTED_VALUE,
+    MIN_EXECUTION_QUALITY, MIN_EXPECTED_VALUE
 )
 import config as cfg
 from data import MarketData
@@ -24,6 +26,8 @@ from risk_manager import RiskManager
 from mtf_engine import MTFEngine
 from timeframe import TIMEFRAMES
 from trade_planner import TradePlanner
+from execution_analyzer import ExecutionAnalyzer
+from expected_value import ExpectedValue
 
 # News & Sentiment
 from news_engine import NewsEngine
@@ -160,39 +164,77 @@ class MarketScanner:
                 )
 
                 initial_action = decision["action"]
-                # ذخیره جهت اولیه قبل از بازنویسی
                 original_side = "sell" if "SELL" in initial_action else "buy"
 
                 entry = float(df.iloc[-1]["close"])
                 atr_val = df["ATR"].iloc[-1] if df["ATR"].iloc[-1] > 0 else 0.0001
 
-                # Trade Planner برای **همه** (حتی WATCH/NO TRADE)
+                # Trade Planner
                 plan = self.planner.plan(df, market_structure, advanced_data, initial_action, entry)
 
-                # اگر معامله معتبر نبود، action را به WATCH تغییر بده
-                final_action = initial_action
-                if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL") and not plan["valid"]:
-                    final_action = "WATCH"
-                    decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
-                    decision["summary"]["Decision Reason"] = decision["summary"]["Current Status"]
+                # Adaptive Position Sizing
+                if ENABLE_ADAPTIVE_POSITION_SIZING:
+                    market_structure_quality = 1.0 if market_structure.get("trend") in ("bullish", "bearish") else 0.5
+                    # MTF agreement
+                    mtf_agreement = 0.0
+                    if "Bullish" in mtf_signal and original_side == "buy":
+                        mtf_agreement = 1.0
+                    elif "Bearish" in mtf_signal and original_side == "sell":
+                        mtf_agreement = 1.0
+                    elif "Bullish" in mtf_signal or "Bearish" in mtf_signal:
+                        mtf_agreement = 0.5
 
-                # مقادیر نهایی
+                    # حجم Z-Score
+                    avg_vol = df["volume"].tail(20).mean()
+                    std_vol = df["volume"].tail(20).std()
+                    vol_z = (df["volume"].iloc[-1] - avg_vol) / std_vol if std_vol != 0 else 0
+
+                    risk_pct = RiskManager.adaptive_risk_pct(
+                        atr_val, df["ADX"].iloc[-1], market_structure_quality,
+                        decision["confidence"], decision["trade_readiness"],
+                        mtf_agreement, vol_z, news_score_val, sentiment_score_val,
+                        macro_risk_active
+                    )
+                else:
+                    risk_pct = cfg.RISK_PER_TRADE
+
+                # Liquidity Execution
+                exec_analysis = {}
+                if ENABLE_LIQUIDITY_EXECUTION:
+                    exec_analysis = ExecutionAnalyzer.analyze(
+                        df, market_structure, advanced_data, initial_action, entry
+                    )
+
+                # Expected Value
+                ev = 0.0
+                if ENABLE_EXPECTED_VALUE:
+                    rr = plan["rr"] if plan["rr"] > 0 else 2.0
+                    volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
+                    ev = ExpectedValue.calculate(
+                        rr, decision["confidence"], decision["trade_readiness"],
+                        strength, news_score_val, sentiment_score_val,
+                        volatility_state, vol_z
+                    )
+
+                # Decision نهایی با در نظر گرفتن EV و liquidity
+                final_action = initial_action
+                if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+                    if not plan["valid"]:
+                        final_action = "WATCH"
+                    elif ENABLE_EXPECTED_VALUE and ev <= MIN_EXPECTED_VALUE:
+                        final_action = "WATCH"
+                        decision["summary"]["Current Status"] = f"Expected Value non-positive ({ev}R)"
+                    elif ENABLE_LIQUIDITY_EXECUTION and exec_analysis.get("execution_quality", 100) < MIN_EXECUTION_QUALITY:
+                        final_action = "WATCH"
+                        decision["summary"]["Current Status"] = f"Low execution quality ({exec_analysis['execution_quality']}%)"
+
                 stop_loss = plan["stop_loss"]
                 targets = plan["targets"]
                 tp1 = targets[0]["price"] if targets else entry + (atr_val * 3)
                 rr = plan["rr"]
-                trade_valid = plan["valid"]
 
-                # Leverage و Input
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, original_side)
-                sl_pct = abs((stop_loss - entry) / entry) if entry != 0 else 0
-                if sl_pct < 0.01:
-                    input_pct = 100.0
-                else:
-                    input_pct = round((1.0 / (sl_pct * 100)) * 100, 2)
-                # ضریب اطمینان
-                conf_factor = 0.8 + 0.2 * (decision["confidence"] / 100.0)
-                input_pct = round(input_pct * conf_factor, 2)
+                input_pct = risk_pct * 100   # درصد ریسک تطبیقی
 
                 results.append({
                     "Symbol": symbol,
@@ -207,7 +249,7 @@ class MarketScanner:
                     "Score": score,
                     "Action": final_action,
                     "Market Signal": trend,
-                    "Trade Valid": trade_valid,
+                    "Trade Valid": plan["valid"],
                     "Support": round(df["low"].tail(50).min(), 4),
                     "Resistance": round(df["high"].tail(50).max(), 4),
                     "Entry": entry,
@@ -217,6 +259,10 @@ class MarketScanner:
                     "RiskReward": round(rr, 2),
                     "Leverage": suggested_leverage,
                     "InputPct": input_pct,
+                    "PositionRisk": f"{risk_pct*100:.2f}%",
+                    "ExecutionType": exec_analysis.get("execution_type", "N/A"),
+                    "ExecutionQuality": exec_analysis.get("execution_quality", 0),
+                    "ExpectedValue": f"{ev:+.2f}R",
                     "VolumeUSDT": round(volume_24h, 2),
                     "Volume Breakout": breakout,
                     "Reasons": ", ".join(reasons),
