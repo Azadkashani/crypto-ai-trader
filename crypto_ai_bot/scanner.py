@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value, Position Risk Reason
+Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value, Trade Valid Logic
 """
 
 from market_structure import MarketStructure
@@ -149,7 +149,7 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # Decision اولیه
+                # Decision اولیه (بدون پارامترهای plan)
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data,
@@ -169,13 +169,12 @@ class MarketScanner:
                 entry = float(df.iloc[-1]["close"])
                 atr_val = df["ATR"].iloc[-1] if df["ATR"].iloc[-1] > 0 else 0.0001
 
-                # Trade Planner
+                # Trade Planner (همیشه اجرا می‌شود، اما فقط برای BUY/SELL اعمال می‌شود)
                 plan = self.planner.plan(df, market_structure, advanced_data, initial_action, entry)
 
                 # Adaptive Position Sizing
                 if ENABLE_ADAPTIVE_POSITION_SIZING:
                     market_structure_quality = 1.0 if market_structure.get("trend") in ("bullish", "bearish") else 0.5
-                    # MTF agreement
                     mtf_agreement = 0.0
                     if "Bullish" in mtf_signal and original_side == "buy":
                         mtf_agreement = 1.0
@@ -183,8 +182,6 @@ class MarketScanner:
                         mtf_agreement = 1.0
                     elif "Bullish" in mtf_signal or "Bearish" in mtf_signal:
                         mtf_agreement = 0.5
-
-                    # حجم Z-Score
                     avg_vol = df["volume"].tail(20).mean()
                     std_vol = df["volume"].tail(20).std()
                     vol_z = (df["volume"].iloc[-1] - avg_vol) / std_vol if std_vol != 0 else 0
@@ -205,18 +202,18 @@ class MarketScanner:
                         df, market_structure, advanced_data, initial_action, entry
                     )
 
-                # Expected Value
+                # Expected Value (با استفاده از targets و stop_loss واقعی)
                 ev = 0.0
-                if ENABLE_EXPECTED_VALUE:
-                    rr = plan["rr"] if plan["rr"] > 0 else 2.0
+                if ENABLE_EXPECTED_VALUE and plan["targets"]:
                     volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
                     ev = ExpectedValue.calculate(
-                        rr, decision["confidence"], decision["trade_readiness"],
+                        plan["targets"], entry, plan.get("stop_loss", entry - atr_val),
+                        decision["confidence"], decision["trade_readiness"],
                         strength, news_score_val, sentiment_score_val,
                         volatility_state, vol_z
                     )
 
-                # Decision نهایی با در نظر گرفتن Trade Planner و EV و liquidity
+                # تصمیم‌گیری نهایی با در نظر گرفتن اعتبار طرح
                 final_action = initial_action
                 if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
                     if not plan["valid"]:
@@ -229,19 +226,29 @@ class MarketScanner:
                         final_action = "WATCH"
                         decision["summary"]["Current Status"] += f" ExecQual={exec_analysis['execution_quality']}"
 
+                # Trade Valid فقط برای BUY/SELL نهایی
+                trade_valid = (final_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"))
+
+                # مقادیر نهایی برای ذخیره
                 stop_loss = plan["stop_loss"]
                 targets = plan["targets"]
                 tp1 = targets[0]["price"] if targets else entry + (atr_val * 3)
                 rr = plan["rr"]
 
-                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, original_side)
+                # Leverage پویا
+                suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, original_side,
+                                                                  volatility=volatility_state if ENABLE_EXPECTED_VALUE else "Normal",
+                                                                  confidence=decision["confidence"],
+                                                                  execution_quality=exec_analysis.get("execution_quality", 50),
+                                                                  ev=ev)
                 input_pct = risk_pct * 100
 
                 # Position Risk Reason
                 position_risk_reason = ""
                 if ENABLE_ADAPTIVE_POSITION_SIZING:
                     parts = []
-                    if atr_val > 0.03: parts.append("High Volatility")
+                    if atr_val > 0.05: parts.append("Very High Volatility")
+                    elif atr_val > 0.03: parts.append("High Volatility")
                     elif atr_val < 0.01: parts.append("Low Volatility")
                     if df["ADX"].iloc[-1] >= 40: parts.append("Strong Trend")
                     elif df["ADX"].iloc[-1] < 15: parts.append("Weak Trend")
@@ -270,7 +277,7 @@ class MarketScanner:
                     "Score": score,
                     "Action": final_action,
                     "Market Signal": trend,
-                    "Trade Valid": plan["valid"],
+                    "Trade Valid": trade_valid,
                     "Support": round(df["low"].tail(50).min(), 4),
                     "Resistance": round(df["high"].tail(50).max(), 4),
                     "Entry": entry,
