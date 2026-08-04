@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value, Trade Valid Logic
+Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value, Trade Quality Score, Watch Info
 """
 
 from market_structure import MarketStructure
@@ -76,7 +76,6 @@ class MarketScanner:
         symbols = self.get_symbols()
         print(f"Scanning {len(symbols)} symbols...\n")
 
-        # اخبار و تحلیل اولیه
         all_raw_news = []
         analyzed_news = []
         if ENABLE_NEWS_ENGINE:
@@ -86,13 +85,11 @@ class MarketScanner:
                 news["assets"] = NewsMapping.get_related_assets(news["title"])
 
         global_sentiment = MarketSentiment.fetch_global_sentiment() if ENABLE_SENTIMENT_ENGINE else None
-
         calendar_events = EconomicCalendar.fetch_events() if ENABLE_ECONOMIC_CALENDAR else []
         macro_risk_active, macro_event = RiskEvents.is_high_impact_near(calendar_events)
 
         for symbol in symbols:
             try:
-                # حجم و فیلتر
                 try:
                     ticker = self.data.exchange.fetch_ticker(symbol)
                     volume_24h = ticker.get("quoteVolume", 0) or 0
@@ -131,7 +128,6 @@ class MarketScanner:
                     sentiment_score_val = scores["sentiment_score"]
                     relevant_news = related_news
 
-                # Scoring
                 analysis = ScoringEngine.calculate(
                     df, mtf_signal,
                     market_structure=market_structure,
@@ -165,11 +161,9 @@ class MarketScanner:
 
                 initial_action = decision["action"]
                 original_side = "sell" if "SELL" in initial_action else "buy"
-
                 entry = float(df.iloc[-1]["close"])
                 atr_val = df["ATR"].iloc[-1] if df["ATR"].iloc[-1] > 0 else 0.0001
 
-                # Trade Planner (همیشه اجرا می‌شود، اما فقط برای BUY/SELL اعمال می‌شود)
                 plan = self.planner.plan(df, market_structure, advanced_data, initial_action, entry)
 
                 # Adaptive Position Sizing
@@ -186,23 +180,27 @@ class MarketScanner:
                     std_vol = df["volume"].tail(20).std()
                     vol_z = (df["volume"].iloc[-1] - avg_vol) / std_vol if std_vol != 0 else 0
 
+                    # همبستگی BTC
+                    btc_corr = None
+                    corr_data = advanced_data.get("correlation")
+                    if corr_data and "btc_correlation" in corr_data:
+                        btc_corr = corr_data["btc_correlation"]
+
                     risk_pct = RiskManager.adaptive_risk_pct(
                         atr_val, df["ADX"].iloc[-1], market_structure_quality,
                         decision["confidence"], decision["trade_readiness"],
                         mtf_agreement, vol_z, news_score_val, sentiment_score_val,
-                        macro_risk_active
+                        macro_risk_active, execution_quality=exec_analysis.get("execution_quality", 50) if ENABLE_LIQUIDITY_EXECUTION else 50,
+                        ev=ev, btc_corr=btc_corr, warnings=warnings
                     )
                 else:
                     risk_pct = cfg.RISK_PER_TRADE
 
-                # Liquidity Execution
                 exec_analysis = {}
                 if ENABLE_LIQUIDITY_EXECUTION:
-                    exec_analysis = ExecutionAnalyzer.analyze(
-                        df, market_structure, advanced_data, initial_action, entry
-                    )
+                    exec_analysis = ExecutionAnalyzer.analyze(df, market_structure, advanced_data, initial_action, entry)
 
-                # Expected Value (با استفاده از targets و stop_loss واقعی)
+                # EV جدید
                 ev = 0.0
                 if ENABLE_EXPECTED_VALUE and plan["targets"]:
                     volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
@@ -213,7 +211,6 @@ class MarketScanner:
                         volatility_state, vol_z
                     )
 
-                # تصمیم‌گیری نهایی با در نظر گرفتن اعتبار طرح
                 final_action = initial_action
                 if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
                     if not plan["valid"]:
@@ -226,16 +223,44 @@ class MarketScanner:
                         final_action = "WATCH"
                         decision["summary"]["Current Status"] += f" ExecQual={exec_analysis['execution_quality']}"
 
-                # Trade Valid فقط برای BUY/SELL نهایی
                 trade_valid = (final_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"))
-
-                # مقادیر نهایی برای ذخیره
                 stop_loss = plan["stop_loss"]
                 targets = plan["targets"]
                 tp1 = targets[0]["price"] if targets else entry + (atr_val * 3)
                 rr = plan["rr"]
 
-                # Leverage پویا
+                # Trade Quality Score
+                trade_quality = 0
+                if trade_valid:
+                    exec_q = exec_analysis.get("execution_quality", 50)
+                    liq_risk = exec_analysis.get("liquidity_risk", 0)
+                    ev_norm = max(0, min(100, (ev + 2) * 25))  # تبدیل EV به مقیاس 0-100
+                    risk_score = 100 - (risk_pct / MAX_POSITION_RISK * 100) if MAX_POSITION_RISK > 0 else 50
+                    trade_quality = int(0.3 * decision["confidence"] + 0.2 * exec_q + 0.2 * ev_norm +
+                                       0.15 * (100 - min(liq_risk, 100)) + 0.15 * risk_score)
+                else:
+                    trade_quality = 0
+
+                # Watch Info
+                watch_info = {}
+                if final_action in ("WATCH",):
+                    if trend == "Bullish":
+                        res_levels = advanced_data.get("sr_strength", {}).get("resistance_level")
+                        if not res_levels:
+                            res_levels = df["high"].tail(50).max()
+                        watch_info["Trigger Price"] = res_levels
+                        watch_info["Confirmation"] = "Volume breakout + MTF alignment"
+                        watch_info["Invalidation"] = f"Below {stop_loss:.4f}"
+                        watch_info["Direction"] = "Bullish"
+                    else:
+                        sup_levels = advanced_data.get("sr_strength", {}).get("support_level")
+                        if not sup_levels:
+                            sup_levels = df["low"].tail(50).min()
+                        watch_info["Trigger Price"] = sup_levels
+                        watch_info["Confirmation"] = "Volume spike + MTF alignment"
+                        watch_info["Invalidation"] = f"Above {stop_loss:.4f}"
+                        watch_info["Direction"] = "Bearish"
+
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, original_side,
                                                                   volatility=volatility_state if ENABLE_EXPECTED_VALUE else "Normal",
                                                                   confidence=decision["confidence"],
@@ -243,7 +268,6 @@ class MarketScanner:
                                                                   ev=ev)
                 input_pct = risk_pct * 100
 
-                # Position Risk Reason
                 position_risk_reason = ""
                 if ENABLE_ADAPTIVE_POSITION_SIZING:
                     parts = []
@@ -292,6 +316,8 @@ class MarketScanner:
                     "ExecutionType": exec_analysis.get("execution_type", "N/A"),
                     "ExecutionQuality": exec_analysis.get("execution_quality", 0),
                     "ExpectedValue": f"{ev:+.2f}R",
+                    "TradeQualityScore": trade_quality,
+                    "WatchInfo": watch_info,
                     "VolumeUSDT": round(volume_24h, 2),
                     "Volume Breakout": breakout,
                     "Reasons": ", ".join(reasons),
@@ -314,5 +340,5 @@ class MarketScanner:
             except Exception as e:
                 print(f"{symbol} : {e}")
 
-        results = sorted(results, key=lambda x: x["Trade Readiness"], reverse=True)
+        results = sorted(results, key=lambda x: x["TradeQualityScore"] if x["TradeQualityScore"] > 0 else x["Trade Readiness"], reverse=True)
         return results[:TOP_RESULTS]
