@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – EV only for valid, safe access
+Advanced Report Engine – Displays InvalidTargets when trade rejected
 """
 
 import pandas as pd
@@ -64,13 +64,10 @@ class ReportEngine:
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
 
-            # نمایش اهداف (در صورت وجود)
+            # Show valid targets
             targets = item.get("Targets", [])
             if targets:
-                if item.get("Trade Valid"):
-                    print("Targets:")
-                else:
-                    print("Invalid Targets (R:R too low or probability insufficient):")
+                print("Targets:")
                 for t in targets:
                     lbl = t.get("label", "TP")
                     price = t.get("price", 0)
@@ -79,7 +76,18 @@ class ReportEngine:
                     prob = t.get("probability", 0.0)
                     print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
 
-            # جزئیات معامله فقط برای معاملات معتبر
+            # Show invalid targets if trade rejected
+            invalid = item.get("InvalidTargets", [])
+            if invalid and not item.get("Trade Valid"):
+                print("Invalid Targets (R:R too low or probability insufficient):")
+                for t in invalid:
+                    lbl = t.get("label", "TP")
+                    price = t.get("price", 0)
+                    pct = t.get("pct", 0.0)
+                    rr = t.get("rr", 0.0)
+                    prob = t.get("probability", 0.0)
+                    print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
+
             if item.get("Trade Valid"):
                 print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
                 if item.get('PositionRiskReason'):
@@ -90,7 +98,6 @@ class ReportEngine:
                 print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
                 print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
                 print(f"Liquidity Risk: {item.get('LiquidityRisk', 'N/A')}")
-                # EV فقط در صورت معتبر بودن نمایش داده می‌شود
                 ev_str = item.get("ExpectedValue", "N/A")
                 print(f"Expected Value: {ev_str}")
                 print(f"Leverage: {item.get('Leverage', 'N/A')}x")
@@ -113,7 +120,7 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
-        # جزئیات کامل (همه نمادها)
+        # Detailed view (same logic)
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -130,11 +137,19 @@ class ReportEngine:
 
             targets = item.get("Targets", [])
             if targets:
-                if item.get("Trade Valid"):
-                    print("Targets:")
-                else:
-                    print("Invalid Targets (R:R too low or probability insufficient):")
+                print("Targets:")
                 for t in targets:
+                    lbl = t.get("label", "TP")
+                    price = t.get("price", 0)
+                    pct = t.get("pct", 0.0)
+                    rr = t.get("rr", 0.0)
+                    prob = t.get("probability", 0.0)
+                    print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
+
+            invalid = item.get("InvalidTargets", [])
+            if invalid and not item.get("Trade Valid"):
+                print("Invalid Targets (R:R too low or probability insufficient):")
+                for t in invalid:
                     lbl = t.get("label", "TP")
                     price = t.get("price", 0)
                     pct = t.get("pct", 0.0)
