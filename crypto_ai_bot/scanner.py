@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Fixed ExecutionAnalyzer initialization
+Market Scanner – Adaptive Trade Validation, PositionSize, RiskLevel
 """
 
 from market_structure import MarketStructure
@@ -14,7 +14,8 @@ from config import (
     ENABLE_MARKET_REGIME, ENABLE_CORRELATION_FILTER,
     ENABLE_NEWS_ENGINE, ENABLE_SENTIMENT_ENGINE, ENABLE_ECONOMIC_CALENDAR,
     ENABLE_ADAPTIVE_POSITION_SIZING, ENABLE_LIQUIDITY_EXECUTION, ENABLE_EXPECTED_VALUE,
-    MIN_EXECUTION_QUALITY, MIN_EXPECTED_VALUE
+    MIN_EXECUTION_QUALITY, MIN_EXPECTED_VALUE,
+    ACCOUNT_BALANCE, MIN_RISK_REWARD
 )
 import config as cfg
 from data import MarketData
@@ -108,7 +109,6 @@ class MarketScanner:
                 mtf_signal, _ = self.analyze_mtf(symbol)
                 advanced_data = self.advanced.analyze(df, market_structure, symbol)
 
-                # News & Sentiment
                 news_score_val = 0
                 sentiment_score_val = 0
                 relevant_news = []
@@ -145,7 +145,6 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # Decision اولیه
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data,
@@ -166,7 +165,48 @@ class MarketScanner:
 
                 plan = self.planner.plan(df, market_structure, advanced_data, initial_action, entry)
 
-                # ===== مقداردهی اولیهٔ exec_analysis (پیش‌فرض امن) =====
+                # ===== Adaptive validation: if plan invalid but EV>0 and RR >= 1.5, keep action =====
+                final_action = initial_action
+                trade_valid = plan["valid"]
+                best_ev = plan.get("best_ev", 0)
+                best_rr = plan.get("rr", 0)
+                best_prob = plan.get("best_prob", 0)
+
+                if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+                    if not plan["valid"]:
+                        # Check if we can still approve the trade
+                        if best_rr >= 1.5 and best_ev > 0 and best_prob >= 0.4:
+                            # keep action but add warning
+                            decision["summary"]["Current Status"] = f"Trade approved with RR={best_rr:.2f} (positive EV)"
+                            trade_valid = True   # mark as valid
+                            # Add warning
+                            warnings.append(f"RR below minimum ({MIN_RISK_REWARD}) but EV={best_ev:.2f}")
+                        else:
+                            final_action = "WATCH"
+                            decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
+
+                # Now if still valid (either original or adaptive), continue with plan
+                if trade_valid:
+                    # می‌توان final_action را همان initial_action نگه داشت (مگر اینکه EV و execution quality مشکل داشته باشند)
+                    # بررسی EV و execution quality (همانند قبل)
+                    if ENABLE_EXPECTED_VALUE and best_ev <= MIN_EXPECTED_VALUE:
+                        final_action = "WATCH"
+                        decision["summary"]["Current Status"] = f"Negative Expected Value ({best_ev}R)"
+                        trade_valid = False
+                    elif ENABLE_LIQUIDITY_EXECUTION and exec_analysis["execution_quality"] < MIN_EXECUTION_QUALITY:
+                        final_action = "WATCH"
+                        decision["summary"]["Current Status"] += f" ExecQual={exec_analysis['execution_quality']}"
+                        trade_valid = False
+                else:
+                    # trade_valid remains False, final_action already WATCH or NO TRADE
+                    pass
+
+                stop_loss = plan["stop_loss"]
+                targets = plan["targets"]
+                tp1 = targets[0]["price"] if targets else entry + (atr_val * 3)
+                rr = best_rr
+
+                # ===== Execution Analyzer (با مقدار پیش‌فرض امن) =====
                 exec_analysis = {
                     "execution_type": "Unknown",
                     "execution_quality": 0,
@@ -174,14 +214,20 @@ class MarketScanner:
                 }
                 if ENABLE_LIQUIDITY_EXECUTION:
                     try:
-                        exec_analysis = ExecutionAnalyzer.analyze(
-                            df, market_structure, advanced_data, initial_action, entry
-                        )
+                        exec_analysis = ExecutionAnalyzer.analyze(df, market_structure, advanced_data, initial_action, entry)
                     except Exception:
-                        # در صورت خطا، همان مقادیر پیش‌فرض باقی می‌ماند
                         pass
 
-                # Adaptive Position Sizing
+                # Liquidity label
+                liq_risk_val = exec_analysis["liquidity_risk"]
+                if liq_risk_val > 50:
+                    liq_label = "High"
+                elif liq_risk_val > 20:
+                    liq_label = "Medium"
+                else:
+                    liq_label = "Low"
+
+                # ===== Adaptive Position Sizing =====
                 if ENABLE_ADAPTIVE_POSITION_SIZING:
                     market_structure_quality = 1.0 if market_structure.get("trend") in ("bullish", "bearish") else 0.5
                     mtf_agreement = 0.0
@@ -206,75 +252,39 @@ class MarketScanner:
                         mtf_agreement, vol_z, news_score_val, sentiment_score_val,
                         macro_risk_active,
                         execution_quality=exec_analysis["execution_quality"],
-                        ev=0,  # EV هنوز محاسبه نشده، اما بعداً به‌روز می‌شود
-                        btc_corr=btc_corr,
-                        warnings=warnings
+                        ev=best_ev, btc_corr=btc_corr, warnings=warnings
                     )
                 else:
                     risk_pct = cfg.RISK_PER_TRADE
 
-                # EV
+                # Position Size and Risk Amount
+                risk_amount = ACCOUNT_BALANCE * risk_pct
+                sl_distance = abs(entry - stop_loss)
+                if sl_distance > 0:
+                    position_size = risk_amount / sl_distance
+                else:
+                    position_size = 0.0
+
+                # Risk Level
+                if risk_pct >= cfg.MAX_POSITION_RISK * 0.8:
+                    risk_level = "High"
+                elif risk_pct >= cfg.MIN_POSITION_RISK * 2:
+                    risk_level = "Medium"
+                else:
+                    risk_level = "Low"
+
+                # Expected Value (محاسبهٔ دقیق)
                 ev = 0.0
                 if ENABLE_EXPECTED_VALUE and plan["targets"]:
                     volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
-                    avg_vol = df["volume"].tail(20).mean()
-                    std_vol = df["volume"].tail(20).std()
-                    vol_z = (df["volume"].iloc[-1] - avg_vol) / std_vol if std_vol != 0 else 0
                     ev = ExpectedValue.calculate(
-                        plan["targets"], entry, plan.get("stop_loss", entry - atr_val),
+                        plan["targets"], entry, stop_loss,
                         decision["confidence"], decision["trade_readiness"],
                         strength, news_score_val, sentiment_score_val,
                         volatility_state, vol_z
                     )
-
-                # تصمیم‌گیری نهایی
-                final_action = initial_action
-                if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
-                    if not plan["valid"]:
-                        final_action = "WATCH"
-                        decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
-                    elif ENABLE_EXPECTED_VALUE and ev <= MIN_EXPECTED_VALUE:
-                        final_action = "WATCH"
-                        decision["summary"]["Current Status"] += f" EV={ev}R"
-                    elif ENABLE_LIQUIDITY_EXECUTION and exec_analysis["execution_quality"] < MIN_EXECUTION_QUALITY:
-                        final_action = "WATCH"
-                        decision["summary"]["Current Status"] += f" ExecQual={exec_analysis['execution_quality']}"
-
-                trade_valid = (final_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"))
-                stop_loss = plan["stop_loss"]
-                targets = plan["targets"]
-                tp1 = targets[0]["price"] if targets else entry + (atr_val * 3)
-                rr = plan["rr"]
-
-                # Trade Quality Score
-                trade_quality = 0
-                if trade_valid:
-                    exec_q = exec_analysis["execution_quality"]
-                    liq_risk = exec_analysis["liquidity_risk"]
-                    ev_norm = max(0, min(100, (ev + 2) * 25))
-                    risk_score = 100 - (risk_pct / cfg.MAX_POSITION_RISK * 100) if cfg.MAX_POSITION_RISK > 0 else 50
-                    trade_quality = int(0.3 * decision["confidence"] + 0.2 * exec_q + 0.2 * ev_norm +
-                                       0.15 * (100 - min(liq_risk, 100)) + 0.15 * risk_score)
-
-                # Watch Info
-                watch_info = {}
-                if final_action in ("WATCH",):
-                    if trend == "Bullish":
-                        res_levels = advanced_data.get("sr_strength", {}).get("resistance_level")
-                        if not res_levels:
-                            res_levels = df["high"].tail(50).max()
-                        watch_info["Trigger Price"] = res_levels
-                        watch_info["Confirmation"] = "Volume breakout + MTF alignment"
-                        watch_info["Invalidation"] = f"Below {stop_loss:.4f}"
-                        watch_info["Direction"] = "Bullish"
-                    else:
-                        sup_levels = advanced_data.get("sr_strength", {}).get("support_level")
-                        if not sup_levels:
-                            sup_levels = df["low"].tail(50).min()
-                        watch_info["Trigger Price"] = sup_levels
-                        watch_info["Confirmation"] = "Volume spike + MTF alignment"
-                        watch_info["Invalidation"] = f"Above {stop_loss:.4f}"
-                        watch_info["Direction"] = "Bearish"
+                else:
+                    ev = best_ev   # fallback to planner's best EV
 
                 suggested_leverage = RiskManager.suggest_leverage(
                     entry, stop_loss, original_side,
@@ -284,6 +294,13 @@ class MarketScanner:
                     ev=ev
                 )
                 input_pct = risk_pct * 100
+
+                # Trade Quality Score (همه نمادها)
+                exec_q = exec_analysis["execution_quality"]
+                ev_norm = max(0, min(100, (ev + 2) * 25))
+                risk_score = 100 - (risk_pct / cfg.MAX_POSITION_RISK * 100) if cfg.MAX_POSITION_RISK > 0 else 50
+                trade_quality = int(0.3 * decision["confidence"] + 0.2 * exec_q + 0.2 * ev_norm +
+                                   0.15 * (100 - min(liq_risk_val, 100)) + 0.15 * risk_score)
 
                 position_risk_reason = ""
                 if ENABLE_ADAPTIVE_POSITION_SIZING:
@@ -304,6 +321,26 @@ class MarketScanner:
                     position_risk_reason = ", ".join(parts) if parts else "Neutral"
                 else:
                     position_risk_reason = "Fixed 1%"
+
+                # Watch Info (برای WATCH)
+                watch_info = {}
+                if final_action in ("WATCH",):
+                    if trend == "Bullish":
+                        res_levels = advanced_data.get("sr_strength", {}).get("resistance_level")
+                        if not res_levels:
+                            res_levels = df["high"].tail(50).max()
+                        watch_info["Trigger Price"] = res_levels
+                        watch_info["Confirmation"] = "Volume breakout + MTF alignment"
+                        watch_info["Invalidation"] = f"Below {stop_loss:.4f}"
+                        watch_info["Direction"] = "Bullish"
+                    else:
+                        sup_levels = advanced_data.get("sr_strength", {}).get("support_level")
+                        if not sup_levels:
+                            sup_levels = df["low"].tail(50).min()
+                        watch_info["Trigger Price"] = sup_levels
+                        watch_info["Confirmation"] = "Volume spike + MTF alignment"
+                        watch_info["Invalidation"] = f"Above {stop_loss:.4f}"
+                        watch_info["Direction"] = "Bearish"
 
                 results.append({
                     "Symbol": symbol,
@@ -330,9 +367,12 @@ class MarketScanner:
                     "InputPct": input_pct,
                     "PositionRisk": f"{risk_pct*100:.2f}%",
                     "PositionRiskReason": position_risk_reason,
+                    "PositionSize": round(position_size, 6) if position_size > 0 else 0,
+                    "RiskAmount": round(risk_amount, 2),
+                    "RiskLevel": risk_level,
                     "ExecutionType": exec_analysis["execution_type"],
                     "ExecutionQuality": exec_analysis["execution_quality"],
-                    "LiquidityRisk": exec_analysis["liquidity_risk"],
+                    "LiquidityRisk": liq_label,
                     "ExpectedValue": f"{ev:+.2f}R",
                     "TradeQualityScore": trade_quality,
                     "WatchInfo": watch_info,
