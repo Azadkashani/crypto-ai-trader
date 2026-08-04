@@ -1,11 +1,37 @@
 """
 Crypto AI Bot v1.2
-Liquidity-aware Execution Analyzer – Expanded Types, Realistic Quality
+Liquidity-aware Execution Analyzer – Safe float extraction
 """
 
 import numpy as np
 
 class ExecutionAnalyzer:
+
+    @staticmethod
+    def _safe_float(value):
+        """همان تابع safe_float از TradePlanner"""
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, dict):
+            for key in ("price", "value", "close", "open", "high", "low"):
+                if key in value:
+                    return ExecutionAnalyzer._safe_float(value[key])
+            for v in value.values():
+                res = ExecutionAnalyzer._safe_float(v)
+                if res is not None:
+                    return res
+            return None
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                res = ExecutionAnalyzer._safe_float(item)
+                if res is not None:
+                    return res
+            return None
+        try:
+            return float(value)
+        except:
+            return None
+
     @staticmethod
     def analyze(df, market_structure, advanced_data, action, entry_price):
         last = df.iloc[-1]
@@ -25,45 +51,59 @@ class ExecutionAnalyzer:
         elif spread_est > 0.01: quality -= 10
 
         vwap_data = advanced_data.get("vwap") if advanced_data else None
-        if vwap_data and vwap_data.get("vwap"):
-            dist_vwap = abs(entry_price - vwap_data["vwap"]) / entry_price
+        vwap_price = ExecutionAnalyzer._safe_float(vwap_data.get("vwap")) if vwap_data else None
+        if vwap_price:
+            dist_vwap = abs(entry_price - vwap_price) / entry_price
             if dist_vwap < 0.002: quality += 10
             elif dist_vwap > 0.02: quality -= 5
 
         liq_risk = 0
         swing_highs = market_structure.get("swing_highs", [])
-        swing_lows = market_structure.get("swing_lows", [])
+        swing_lows  = market_structure.get("swing_lows", [])
+
         if action in ("BUY", "STRONG BUY"):
             for low in swing_lows:
-                if abs(entry_price - low) / entry_price < 0.005:
+                low_val = ExecutionAnalyzer._safe_float(low)
+                if low_val is not None and abs(entry_price - low_val) / entry_price < 0.005:
                     liq_risk += 10
                     quality -= 5
         elif action in ("SELL", "STRONG SELL"):
             for high in swing_highs:
-                if abs(entry_price - high) / entry_price < 0.005:
+                high_val = ExecutionAnalyzer._safe_float(high)
+                if high_val is not None and abs(entry_price - high_val) / entry_price < 0.005:
                     liq_risk += 10
                     quality -= 5
 
-        if advanced_data.get("order_block", {}).get("valid"): quality += 5
-        if advanced_data.get("fvg", {}).get("active_fvg"): quality += 5
-        if advanced_data.get("volume_profile", {}).get("poc"):
-            if abs(entry_price - advanced_data["volume_profile"]["poc"]) / entry_price < 0.01:
+        # OB, FVG, POC bonuses
+        ob = advanced_data.get("order_block") if advanced_data else None
+        if ob and ob.get("valid"):
+            quality += 5
+
+        fvg = advanced_data.get("fvg") if advanced_data else None
+        if fvg and fvg.get("active_fvg"):
+            quality += 5
+
+        vp = advanced_data.get("volume_profile") if advanced_data else None
+        if vp:
+            poc_val = ExecutionAnalyzer._safe_float(vp.get("poc"))
+            if poc_val is not None and abs(entry_price - poc_val) / entry_price < 0.01:
                 quality += 10
 
         quality = max(30, min(95, quality))
 
+        # Execution type selection
         if quality < 40 or liq_risk > 40:
             exec_type = "Avoid Trade"
         elif quality >= 85 and vol_z > 1.0:
             exec_type = "Market Order"
         elif quality >= 75:
             if action in ("BUY", "STRONG BUY"):
-                if entry_price < vwap_data.get("vwap", entry_price):
+                if vwap_price and entry_price < vwap_price:
                     exec_type = "Limit Near Support"
                 else:
                     exec_type = "Limit Order"
             else:
-                if entry_price > vwap_data.get("vwap", entry_price):
+                if vwap_price and entry_price > vwap_price:
                     exec_type = "Limit Near Resistance"
                 else:
                     exec_type = "Limit Order"
