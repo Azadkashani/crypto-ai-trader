@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – Displays InvalidTargets when trade rejected
+Advanced Report Engine – Displays PositionSizePct instead of InputPct
 """
 
 import pandas as pd
@@ -64,7 +64,6 @@ class ReportEngine:
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
 
-            # Show valid targets
             targets = item.get("Targets", [])
             if targets:
                 print("Targets:")
@@ -76,7 +75,6 @@ class ReportEngine:
                     prob = t.get("probability", 0.0)
                     print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
 
-            # Show invalid targets if trade rejected
             invalid = item.get("InvalidTargets", [])
             if invalid and not item.get("Trade Valid"):
                 print("Invalid Targets (R:R too low or probability insufficient):")
@@ -92,7 +90,7 @@ class ReportEngine:
                 print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
                 if item.get('PositionRiskReason'):
                     print(f"  Reason: {item['PositionRiskReason']}")
-                print(f"Position Size: {item.get('PositionSize', 'N/A')}")
+                print(f"Position Size: {item.get('PositionSize', 'N/A')} ({item.get('PositionSizePct', 'N/A')})")
                 print(f"Risk Amount: {item.get('RiskAmount', 'N/A')} USDT")
                 print(f"Risk Level: {item.get('RiskLevel', 'N/A')}")
                 print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
@@ -120,7 +118,6 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
-        # Detailed view (same logic)
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -161,7 +158,7 @@ class ReportEngine:
                 print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
                 if item.get('PositionRiskReason'):
                     print(f"  Reason: {item['PositionRiskReason']}")
-                print(f"Position Size: {item.get('PositionSize', 'N/A')}")
+                print(f"Position Size: {item.get('PositionSize', 'N/A')} ({item.get('PositionSizePct', 'N/A')})")
                 print(f"Risk Amount: {item.get('RiskAmount', 'N/A')} USDT")
                 print(f"Risk Level: {item.get('RiskLevel', 'N/A')}")
                 print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
