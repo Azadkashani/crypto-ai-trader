@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – Full Details Including PositionRisk Reason, R:R, EV
+Advanced Report Engine – Safe Target Access, PositionRisk Reason, R:R, EV
 """
 
 import pandas as pd
@@ -68,7 +68,12 @@ class ReportEngine:
             if targets:
                 print("Targets:")
                 for t in targets:
-                    print(f"  {t['label']}: {smart_price(t['price'])} ({t['pct']:+.2f}%) | R:R={t['rr']} | Prob={t['probability']}")
+                    lbl = t.get("label", "TP")
+                    price = t.get("price", 0)
+                    pct = t.get("pct", 0.0)
+                    rr = t.get("rr", 0.0)
+                    prob = t.get("probability", 0.0)
+                    print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
             else:
                 print("Take Profit: N/A")
 
@@ -108,7 +113,12 @@ class ReportEngine:
             if targets:
                 print("Targets:")
                 for t in targets:
-                    print(f"  {t['label']}: {smart_price(t['price'])} ({t['pct']:+.2f}%) | R:R={t['rr']} | Prob={t['probability']}")
+                    lbl = t.get("label", "TP")
+                    price = t.get("price", 0)
+                    pct = t.get("pct", 0.0)
+                    rr = t.get("rr", 0.0)
+                    prob = t.get("probability", 0.0)
+                    print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
             print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
             if item.get('PositionRiskReason'):
                 print(f"  Reason: {item['PositionRiskReason']}")
