@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Professional Decision Engine – Capped Confidence, Warning Penalties, Dynamic Readiness
+Professional Decision Engine – Capped Confidence, Uncertainty Penalties
 """
 
 from weights import WARNING_WEIGHTS
@@ -23,7 +23,7 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence (capped at 98) ----
+        # ---- Confidence (cap at 95%) ----
         conf = 30
         if trend in ("bullish", "bearish"): conf += 10
         if strength == "Very Strong": conf += 20
@@ -66,7 +66,7 @@ class DecisionEngine:
         if oi and oi.get("state") == "Long Unwinding": conf -= 2
         if macd_div and macd_div.get("bearish_div"): conf -= 4
 
-        # Warning penalties
+        # عدم قطعیت ناشی از تضادها
         warning_text = " ".join(warnings)
         if "Premium Zone" in warning_text or "Price Near Resistance" in warning_text:
             conf -= 5
@@ -74,17 +74,17 @@ class DecisionEngine:
             conf -= 5
 
         conf += news_score * 0.5 + sentiment_score * 0.3
-        conf = max(10, min(98, conf))   # cap at 98%
+        conf = max(10, min(95, conf))   # سقف 95٪
 
-        # ---- Trade Readiness (dynamic) ----
+        # ---- Trade Readiness ----
         readiness = max(buy_score, sell_score)
         if execution_quality is not None:
-            readiness = readiness * 0.6 + execution_quality * 0.2 + (confidence:=conf) * 0.2
+            readiness = int(readiness * 0.6 + execution_quality * 0.2 + conf * 0.2)
         if ev is not None and ev > 0:
             readiness += 5
         if risk_event:
             readiness -= 10
-        readiness = max(0, min(100, int(readiness)))
+        readiness = max(0, min(100, readiness))
 
         # ---- Action اولیه ----
         if risk_event:
@@ -132,7 +132,7 @@ class DecisionEngine:
             "Risk Level": "Medium"
         }
 
-        print(f"[DecisionEngine v4.3] buy={buy_score} sell={sell_score} => {action}")
+        print(f"[DecisionEngine v4.4] buy={buy_score} sell={sell_score} => {action}")
         return {
             "action": action,
             "confidence": conf,
