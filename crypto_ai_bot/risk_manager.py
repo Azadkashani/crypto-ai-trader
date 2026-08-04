@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Risk Manager – Adaptive Position Sizing, Dynamic Leverage
+Risk Manager – Improved Adaptive Position Sizing, Dynamic Leverage
 """
 
 from config import (
@@ -54,19 +54,16 @@ class RiskManager:
         else:
             base_leverage = 1
 
-        # Adjust for confidence and execution quality
         if confidence > 80 and execution_quality > 80:
             base_leverage *= 1.2
         elif confidence < 50 or execution_quality < 50:
             base_leverage *= 0.8
 
-        # Adjust for volatility
         if volatility == "High Volatility":
             base_leverage *= 0.7
         elif volatility == "Low Volatility":
             base_leverage *= 1.1
 
-        # Adjust for EV
         if ev > 1.0:
             base_leverage *= 1.1
         elif ev < 0:
@@ -76,11 +73,13 @@ class RiskManager:
 
     @staticmethod
     def adaptive_risk_pct(atr, adx, market_structure_quality, confidence, trade_readiness,
-                          mtf_agreement, volume_z, news_score, sentiment_score, macro_risk):
+                          mtf_agreement, volume_z, news_score, sentiment_score, macro_risk,
+                          execution_quality=50, ev=0, btc_corr=None, warnings=None):
         if not ENABLE_ADAPTIVE_POSITION_SIZING:
             return RISK_PER_TRADE
-        score = 0.5
-        # ATR impact
+
+        score = 0.3  # پایه پایین‌تر برای تنوع بیشتر
+        # ATR
         if atr > 0.05: score -= 0.2
         elif atr > 0.03: score -= 0.1
         elif atr < 0.01: score += 0.1
@@ -102,6 +101,17 @@ class RiskManager:
         if sentiment_score > 5: score += 0.05
         elif sentiment_score < -5: score -= 0.05
         if macro_risk: score -= 0.2
+
+        # عوامل جدید
+        if execution_quality < 50: score -= 0.15
+        if ev < 0: score -= 0.15
+        elif ev > 1.5: score += 0.1
+        if btc_corr is not None and btc_corr > 0.8: score += 0.05
+        # هشدارها: کاهش ریسک در صورت وجود هشدارهای بحرانی
+        if warnings:
+            if "Opposing CHoCH" in warnings or "Bearish Divergence" in warnings:
+                score -= 0.2
+
         score = max(0.0, min(1.0, score))
         risk_pct = MIN_POSITION_RISK + (MAX_POSITION_RISK - MIN_POSITION_RISK) * score
         return round(risk_pct, 4)
