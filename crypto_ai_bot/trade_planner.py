@@ -1,7 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – dynamic SL, multi‑TP, probability scoring, safe extraction,
-targets sorted by distance to entry (nearest first)
+Institutional‑Grade Trade Planner – Safe extraction, no dict-float errors
 """
 
 import numpy as np
@@ -15,7 +14,7 @@ class TradePlanner:
         self.atr_buffer_factor = 0.2
         self.cluster_atr_mult = 0.3
         self.max_targets = 3
-        self.min_sl_distance_atr = 0.5          # حداقل فاصلهٔ SL از ورود (بر حسب ATR)
+        self.min_sl_distance_atr = 0.5
 
     # -----------------------------------------------------------------
     def plan(self, df: pd.DataFrame, market_structure: dict,
@@ -23,13 +22,13 @@ class TradePlanner:
         side = "buy" if "BUY" in action else "sell"
         atr = df["ATR"].iloc[-1]
 
-        # 1. محاسبهٔ حد ضرر (فقط یک بار)
+        # 1. محاسبهٔ حد ضرر (فقط یک بار، با مقادیر امن)
         sl = self._calculate_stop_loss(side, entry_price, atr, market_structure, advanced_data)
 
         # 2. اهداف (با مرتب‌سازی)
         targets = self._calculate_targets(side, entry_price, atr, sl, market_structure, advanced_data)
 
-        # 3. اعتبارسنجی بر اساس نزدیکترین هدف (TP1)
+        # 3. اعتبارسنجی
         valid = False
         rr = 0.0
         reward = 0.0
@@ -37,23 +36,14 @@ class TradePlanner:
         if risk == 0:
             return self._invalid_plan(entry_price, sl, "Risk is zero.")
 
-        # بررسی تمام اهداف: اگر حداقل یکی R:R ≥ min_rr داشت، معتبر است.
-        # اما برای نمایش TP1 (نزدیکترین) را به عنوان TP1 و برای محاسبه reward و rr نهایی استفاده می‌کنیم.
-        tp1 = targets[0]["price"] if targets else None
-        if tp1 is None:
-            return self._invalid_plan(entry_price, sl, "No valid target found.")
-
-        # ابتدا تمام اهداف را از نظر R:R و probability بررسی می‌کنیم (برای نمایش در خروجی)
         for t in targets:
             t_rr = abs(t["price"] - entry_price) / risk
             t["rr"] = round(t_rr, 2)
             if t_rr >= self.min_rr and t["probability"] >= 0.3:
-                # معتبر است (برای حداقل یک هدف)
-                if not valid:
-                    # اولین هدف معتبر (معمولاً TP1) reward و rr را تعیین می‌کند
-                    valid = True
-                    reward = abs(t["price"] - entry_price)
-                    rr = t_rr
+                valid = True
+                reward = abs(t["price"] - entry_price)
+                rr = t_rr
+                break
 
         if not valid:
             return {
@@ -84,6 +74,7 @@ class TradePlanner:
         if not candidates:
             return self._atr_fallback(side, entry, atr, ms)
 
+        # امتیازدهی و انتخاب بهترین
         for c in candidates:
             c["score"] = self._score_level(c, ms, adv, atr)
 
@@ -93,7 +84,6 @@ class TradePlanner:
             return self._atr_fallback(side, entry, atr, ms)
 
         best = max(valid, key=lambda x: x["score"])
-        # بافر ATR
         buffer = atr * self.atr_buffer_factor
         if side == "buy":
             sl_candidate = best["price"] - buffer
@@ -102,13 +92,12 @@ class TradePlanner:
 
         # بررسی حداقل فاصله
         if abs(entry - sl_candidate) < self.min_sl_distance_atr * atr:
-            # SL بیش از حد نزدیک → از ATR استفاده کن
             return self._atr_fallback(side, entry, atr, ms)
         return sl_candidate
 
     def _gather_sl_candidates(self, side, entry, ms, adv):
         cand = []
-        # Swing points
+        # Swing High/Low (با _safe_float)
         for s in ms.get("swing_highs", []):
             price = self._safe_float(s)
             if price is not None:
@@ -118,7 +107,7 @@ class TradePlanner:
             if price is not None:
                 cand.append({"price": price, "type": "swing_low"})
 
-        # Order Blocks
+        # Order Blocks (با _safe_float)
         ob = adv.get("order_block") if adv else None
         if ob and ob.get("valid"):
             if ob.get("bullish_ob") and side == "buy":
@@ -128,7 +117,7 @@ class TradePlanner:
                 price = self._safe_float(ob["bearish_ob"].get("high"))
                 if price: cand.append({"price": price, "type": "ob_bearish"})
 
-        # SR Strength
+        # SR Strength (با _safe_float)
         sr = adv.get("sr_strength") if adv else None
         if sr:
             if side == "buy" and sr.get("valid_support"):
@@ -138,7 +127,7 @@ class TradePlanner:
                 price = self._safe_float(sr.get("resistance_level"))
                 if price: cand.append({"price": price, "type": "resistance_50"})
 
-        # FVG
+        # FVG (با _safe_float)
         fvg = adv.get("fvg") if adv else None
         if fvg and fvg.get("active_fvg"):
             act = fvg["active_fvg"]
@@ -149,7 +138,7 @@ class TradePlanner:
                 price = self._safe_float(act.get("gap_high"))
                 if price: cand.append({"price": price, "type": "fvg_bearish"})
 
-        # POC
+        # POC (با _safe_float)
         vp = adv.get("volume_profile") if adv else None
         if vp:
             poc = self._safe_float(vp.get("poc"))
@@ -158,11 +147,11 @@ class TradePlanner:
         return cand
 
     def _safe_float(self, value):
-        """استخراج عدد float از دیکشنری یا مقدار خام"""
+        """تبدیل ایمن به float؛ دیکشنری‌ها را هم پشتیبانی می‌کند."""
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, dict):
-            # ممکن است کلید 'price' داشته باشد
+            # گاهی swing یک دیکشنری با کلید price است
             return float(value.get("price", value.get("value", 0.0)))
         try:
             return float(value)
@@ -198,38 +187,31 @@ class TradePlanner:
             best = max(cl["members"], key=lambda x: x.get("quality", 0.5))
             cl["price"] = self._safe_float(best["price"])
 
-        # انتخاب حداکثر max_targets خوشه با بالاترین امتیاز
         clusters.sort(key=lambda x: x["score"], reverse=True)
         chosen = clusters[:self.max_targets]
 
         targets = []
         for cl in chosen:
             prob = self._estimate_probability(cl, side, entry, atr, ms)
-            # RR موقتاً بدون sl دقیق (در plan محاسبه می‌شود)
             targets.append({
                 "price": round(cl["price"], 4),
                 "pct": round((cl["price"] / entry - 1) * 100, 2) if side == "buy"
                        else round((entry / cl["price"] - 1) * 100, 2),
-                "rr": 0.0,  # بعداً در plan پر می‌شود
+                "rr": 0.0,
                 "probability": round(prob, 2),
-                "label": ""  # بعداً پر می‌شود
+                "label": ""
             })
 
-        # اگر هیچ هدفی نبود، fallback
         if not targets:
             targets = [self._atr_target(side, entry, atr, sl, emergency=True)]
-            # مرتب‌سازی لازم نیست چون یک هدف بیشتر نیست
             return targets
 
-        # ===== مرتب‌سازی بر اساس نزدیکی به Entry =====
+        # مرتب‌سازی بر اساس نزدیکی
         if side == "buy":
-            # خرید: نزدیکترین مقاومت (کوچکترین قیمت بالای Entry) اول
             targets.sort(key=lambda x: x["price"])
         else:
-            # فروش: نزدیکترین حمایت (بزرگترین قیمت زیر Entry) اول
             targets.sort(key=lambda x: x["price"], reverse=True)
 
-        # بازنویسی labelها
         for i, t in enumerate(targets):
             t["label"] = f"TP{i+1}"
 
@@ -292,7 +274,7 @@ class TradePlanner:
             if p and ((side == "buy" and p > entry) or (side == "sell" and p < entry)):
                 levels.append({"price": p, "type": "poc", "quality": 0.5})
 
-        # Fibonacci (extension for buy, retracement for sell)
+        # Fibonacci
         fib = adv.get("fibonacci") if adv else None
         if fib and fib.get("levels"):
             for lvl in ["1.272", "1.618"]:
