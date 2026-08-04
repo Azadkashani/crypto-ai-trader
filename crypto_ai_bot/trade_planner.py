@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Safe extraction, no dict-float errors
+Institutional‑Grade Trade Planner – Ultra‑safe extraction, no dict‑float errors
 """
 
 import numpy as np
@@ -19,35 +19,44 @@ class TradePlanner:
     # -----------------------------------------------------------------
     def plan(self, df: pd.DataFrame, market_structure: dict,
              advanced_data: dict, action: str, entry_price: float) -> dict:
+        # اطمینان از float بودن ورودی‌های حیاتی
+        try:
+            entry = float(entry_price)
+        except:
+            entry = 0.0
+        try:
+            atr = float(df["ATR"].iloc[-1])
+        except:
+            atr = 0.001
+
         side = "buy" if "BUY" in action else "sell"
-        atr = df["ATR"].iloc[-1]
 
-        # 1. محاسبهٔ حد ضرر (فقط یک بار، با مقادیر امن)
-        sl = self._calculate_stop_loss(side, entry_price, atr, market_structure, advanced_data)
+        # 1. حد ضرر
+        sl = self._calculate_stop_loss(side, entry, atr, market_structure, advanced_data)
 
-        # 2. اهداف (با مرتب‌سازی)
-        targets = self._calculate_targets(side, entry_price, atr, sl, market_structure, advanced_data)
+        # 2. اهداف
+        targets = self._calculate_targets(side, entry, atr, sl, market_structure, advanced_data)
 
         # 3. اعتبارسنجی
         valid = False
         rr = 0.0
         reward = 0.0
-        risk = abs(entry_price - sl)
+        risk = abs(entry - sl)
         if risk == 0:
-            return self._invalid_plan(entry_price, sl, "Risk is zero.")
+            return self._invalid_plan(entry, sl, "Risk is zero.")
 
         for t in targets:
-            t_rr = abs(t["price"] - entry_price) / risk
+            t_rr = abs(t["price"] - entry) / risk
             t["rr"] = round(t_rr, 2)
             if t_rr >= self.min_rr and t["probability"] >= 0.3:
                 valid = True
-                reward = abs(t["price"] - entry_price)
+                reward = abs(t["price"] - entry)
                 rr = t_rr
                 break
 
         if not valid:
             return {
-                "entry": entry_price,
+                "entry": entry,
                 "stop_loss": round(sl, 4),
                 "targets": targets,
                 "risk": round(risk, 4),
@@ -58,7 +67,7 @@ class TradePlanner:
             }
 
         return {
-            "entry": entry_price,
+            "entry": entry,
             "stop_loss": round(sl, 4),
             "targets": targets,
             "risk": round(risk, 4),
@@ -74,7 +83,6 @@ class TradePlanner:
         if not candidates:
             return self._atr_fallback(side, entry, atr, ms)
 
-        # امتیازدهی و انتخاب بهترین
         for c in candidates:
             c["score"] = self._score_level(c, ms, adv, atr)
 
@@ -90,14 +98,13 @@ class TradePlanner:
         else:
             sl_candidate = best["price"] + buffer
 
-        # بررسی حداقل فاصله
         if abs(entry - sl_candidate) < self.min_sl_distance_atr * atr:
             return self._atr_fallback(side, entry, atr, ms)
         return sl_candidate
 
     def _gather_sl_candidates(self, side, entry, ms, adv):
         cand = []
-        # Swing High/Low (با _safe_float)
+        # Swing High/Low
         for s in ms.get("swing_highs", []):
             price = self._safe_float(s)
             if price is not None:
@@ -107,7 +114,7 @@ class TradePlanner:
             if price is not None:
                 cand.append({"price": price, "type": "swing_low"})
 
-        # Order Blocks (با _safe_float)
+        # Order Blocks
         ob = adv.get("order_block") if adv else None
         if ob and ob.get("valid"):
             if ob.get("bullish_ob") and side == "buy":
@@ -117,7 +124,7 @@ class TradePlanner:
                 price = self._safe_float(ob["bearish_ob"].get("high"))
                 if price: cand.append({"price": price, "type": "ob_bearish"})
 
-        # SR Strength (با _safe_float)
+        # SR Strength
         sr = adv.get("sr_strength") if adv else None
         if sr:
             if side == "buy" and sr.get("valid_support"):
@@ -127,7 +134,7 @@ class TradePlanner:
                 price = self._safe_float(sr.get("resistance_level"))
                 if price: cand.append({"price": price, "type": "resistance_50"})
 
-        # FVG (با _safe_float)
+        # FVG
         fvg = adv.get("fvg") if adv else None
         if fvg and fvg.get("active_fvg"):
             act = fvg["active_fvg"]
@@ -138,7 +145,7 @@ class TradePlanner:
                 price = self._safe_float(act.get("gap_high"))
                 if price: cand.append({"price": price, "type": "fvg_bearish"})
 
-        # POC (با _safe_float)
+        # POC
         vp = adv.get("volume_profile") if adv else None
         if vp:
             poc = self._safe_float(vp.get("poc"))
@@ -147,12 +154,20 @@ class TradePlanner:
         return cand
 
     def _safe_float(self, value):
-        """تبدیل ایمن به float؛ دیکشنری‌ها را هم پشتیبانی می‌کند."""
+        """تبدیل ایمن به float؛ پشتیبانی از دیکشنری‌های تودرتو و لیست‌ها"""
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, dict):
-            # گاهی swing یک دیکشنری با کلید price است
-            return float(value.get("price", value.get("value", 0.0)))
+            # جستجوی کلیدهای معمول
+            for key in ("price", "value", "close", "open", "high", "low"):
+                if key in value:
+                    return self._safe_float(value[key])
+            # اگر هیچ کلید عددی نبود، خود دیکشنری را نمی‌توان تبدیل کرد
+            return None
+        if isinstance(value, (list, tuple)):
+            if len(value) > 0:
+                return self._safe_float(value[0])
+            return None
         try:
             return float(value)
         except:
@@ -206,7 +221,6 @@ class TradePlanner:
             targets = [self._atr_target(side, entry, atr, sl, emergency=True)]
             return targets
 
-        # مرتب‌سازی بر اساس نزدیکی
         if side == "buy":
             targets.sort(key=lambda x: x["price"])
         else:
