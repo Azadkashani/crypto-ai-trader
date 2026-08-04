@@ -23,7 +23,7 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence (cap at 95%) ----
+        # ---- Confidence (حداکثر ۹۵٪) ----
         conf = 30
         if trend in ("bullish", "bearish"): conf += 10
         if strength == "Very Strong": conf += 20
@@ -66,7 +66,7 @@ class DecisionEngine:
         if oi and oi.get("state") == "Long Unwinding": conf -= 2
         if macd_div and macd_div.get("bearish_div"): conf -= 4
 
-        # عدم قطعیت ناشی از تضادها
+        # عدم قطعیت ناشی از هشدارهای مهم
         warning_text = " ".join(warnings)
         if "Premium Zone" in warning_text or "Price Near Resistance" in warning_text:
             conf -= 5
@@ -74,9 +74,9 @@ class DecisionEngine:
             conf -= 5
 
         conf += news_score * 0.5 + sentiment_score * 0.3
-        conf = max(10, min(95, conf))   # سقف 95٪
+        conf = max(10, min(95, conf))   # سقف ۹۵٪
 
-        # ---- Trade Readiness ----
+        # ---- Trade Readiness (پویا) ----
         readiness = max(buy_score, sell_score)
         if execution_quality is not None:
             readiness = int(readiness * 0.6 + execution_quality * 0.2 + conf * 0.2)
@@ -109,7 +109,7 @@ class DecisionEngine:
             action = "NO TRADE"
             decision_reason = "No actionable signal."
 
-        # ---- تصحیح با Trade Planner ----
+        # ---- تصحیح با Trade Planner و EV و Liquidity ----
         if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
             if not plan_valid:
                 action = "WATCH"
