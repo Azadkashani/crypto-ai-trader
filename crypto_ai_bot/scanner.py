@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Fixed volatility_state & leverage based on position risk
+Market Scanner – Position Size % Based on Real Risk & Leverage
 """
 
 import traceback
@@ -177,7 +177,7 @@ class MarketScanner:
 
                 plan = self.planner.plan(df, market_structure, advanced_data, plan_action, entry)
 
-                # Strict RR – no adaptive bypass
+                # Strict RR
                 trade_valid = plan["valid"]
                 final_action = initial_action
                 if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
@@ -186,10 +186,9 @@ class MarketScanner:
                         trade_valid = False
                         decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
 
-                # Ensure trade_valid matches final action
                 trade_valid = (final_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"))
 
-                # Execution analysis (safe)
+                # Execution analysis
                 exec_analysis = {
                     "execution_type": "Unknown",
                     "execution_quality": 0,
@@ -248,8 +247,7 @@ class MarketScanner:
                 risk_level = "High" if risk_pct >= cfg.MAX_POSITION_RISK * 0.8 else \
                              "Medium" if risk_pct >= cfg.MIN_POSITION_RISK * 2 else "Low"
 
-                # Expected Value (only when valid)
-                volatility_state = "Normal"   # مقدار پیش‌فرض
+                volatility_state = "Normal"
                 ev = None
                 if ENABLE_EXPECTED_VALUE and trade_valid and plan["targets"]:
                     volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
@@ -266,9 +264,20 @@ class MarketScanner:
                     confidence=decision["confidence"],
                     execution_quality=exec_analysis["execution_quality"],
                     ev=plan.get("best_ev", 0),
-                    risk_pct=risk_pct          # ← اضافه شدن درصد ریسک واقعی
+                    risk_pct=risk_pct
                 )
-                input_pct = risk_pct * 100
+
+                # محاسبهٔ Position Size % با در نظر گرفتن اهرم
+                sl_pct = abs(plan["stop_loss"] - entry) / entry
+                if sl_pct > 0 and suggested_leverage > 0:
+                    position_size_pct = (risk_pct / sl_pct / suggested_leverage) * 100
+                else:
+                    position_size_pct = 0.0
+                # محدودیت ۱۰۰٪
+                position_size_pct = min(100.0, position_size_pct)
+
+                # دیگر input_pct قدیمی حذف شده است
+                # input_pct = risk_pct * 100
 
                 exec_q = exec_analysis["execution_quality"]
                 ev_norm = max(0, min(100, (plan.get("best_ev", 0) + 2) * 25))
@@ -338,10 +347,11 @@ class MarketScanner:
                     "InvalidTargets": plan.get("invalid_targets", []),
                     "RiskReward": round(plan.get("rr", 0), 2),
                     "Leverage": suggested_leverage,
-                    "InputPct": input_pct,
+                    "InputPct": 0,   # دیگر استفاده نمی‌شود اما برای سازگاری با گزارش قدیمی
                     "PositionRisk": f"{risk_pct*100:.2f}%",
                     "PositionRiskReason": position_risk_reason,
                     "PositionSize": round(position_size, 6) if position_size > 0 else 0,
+                    "PositionSizePct": f"{position_size_pct:.1f}%",
                     "RiskAmount": round(risk_amount, 2),
                     "RiskLevel": risk_level,
                     "ExecutionType": exec_analysis["execution_type"],
