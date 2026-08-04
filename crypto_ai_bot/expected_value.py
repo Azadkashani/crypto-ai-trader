@@ -1,17 +1,12 @@
 """
 Crypto AI Bot v1.2
-Expected Value Calculator – Multi-target, Probability-based
+Expected Value Calculator – Per-target summation, realistic bounds
 """
-
-from config import MIN_RISK_REWARD
 
 class ExpectedValue:
     @staticmethod
     def calculate(targets, entry, stop_loss, confidence, trade_readiness,
                   trend_strength, news_score, sentiment_score, volatility, volume_z):
-        """
-        targets: list of dicts with 'price' and 'probability'
-        """
         if not targets or stop_loss is None or entry == stop_loss:
             return 0.0
 
@@ -34,7 +29,7 @@ class ExpectedValue:
         avg_reward = weighted_reward / total_prob
         avg_rr = avg_reward / risk if risk > 0 else 0
 
-        # Adjust win rate based on confidence, readiness, trend, etc.
+        # تنظیم Win Rate بر اساس عوامل کیفی
         win_rate = total_prob
         win_rate += (confidence / 100.0 - 0.5) * 0.1
         win_rate += (trade_readiness / 100.0 - 0.5) * 0.1
@@ -54,4 +49,7 @@ class ExpectedValue:
         loss_rate = 1.0 - win_rate
 
         ev = (win_rate * avg_rr) - (loss_rate * 1.0)
+
+        # محدودسازی به بازه واقعی
+        ev = max(-2.0, min(3.0, ev))
         return round(ev, 2)
