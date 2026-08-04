@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Liquidity-aware Execution Analyzer – Safe float extraction
+Liquidity-aware Execution Analyzer – Diverse Types, Realistic Quality
 """
 
 import numpy as np
@@ -9,7 +9,6 @@ class ExecutionAnalyzer:
 
     @staticmethod
     def _safe_float(value):
-        """همان تابع safe_float از TradePlanner"""
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, dict):
@@ -89,25 +88,41 @@ class ExecutionAnalyzer:
             if poc_val is not None and abs(entry_price - poc_val) / entry_price < 0.01:
                 quality += 10
 
-        quality = max(30, min(95, quality))
+        # Session influence
+        session = advanced_data.get("session", {}).get("session", "")
+        if session in ("London", "New York", "London+NY Overlap"):
+            quality += 5
+        elif session == "Asia":
+            quality -= 5
+
+        quality = max(20, min(95, quality))
 
         # Execution type selection
         if quality < 40 or liq_risk > 40:
             exec_type = "Avoid Trade"
         elif quality >= 85 and vol_z > 1.0:
-            exec_type = "Market Order"
+            if spread_est < 0.0005:
+                exec_type = "Market Order"
+            else:
+                exec_type = "TWAP"
         elif quality >= 75:
             if action in ("BUY", "STRONG BUY"):
                 if vwap_price and entry_price < vwap_price:
                     exec_type = "Limit Near Support"
+                elif vwap_price and abs(entry_price - vwap_price)/entry_price < 0.005:
+                    exec_type = "VWAP"
                 else:
                     exec_type = "Limit Order"
             else:
                 if vwap_price and entry_price > vwap_price:
                     exec_type = "Limit Near Resistance"
+                elif vwap_price and abs(entry_price - vwap_price)/entry_price < 0.005:
+                    exec_type = "VWAP"
                 else:
                     exec_type = "Limit Order"
         elif quality >= 60:
+            exec_type = "Scale In"
+        elif quality >= 50:
             exec_type = "Wait For Confirmation"
         else:
             exec_type = "Reduce Position Size"
