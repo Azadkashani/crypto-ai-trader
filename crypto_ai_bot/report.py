@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – Safe Display, Conditional Details
+Advanced Report Engine – Watch Info, Trade Quality Score, Safe Display
 """
 
 import pandas as pd
@@ -26,7 +26,7 @@ class ReportEngine:
         if not results: print("No Data"); return
 
         table = pd.DataFrame(results)
-        table = table.sort_values(by="Trade Readiness", ascending=False)
+        table = table.sort_values(by="TradeQualityScore", ascending=False)
 
         if "VolumeUSDT" in table.columns:
             table["VolumeUSDT"] = table["VolumeUSDT"].apply(format_volume)
@@ -40,7 +40,7 @@ class ReportEngine:
             "Confidence", "RSI", "News Score", "Sentiment Score",
             "Score", "Action", "Market Signal", "Trade Valid",
             "PositionRisk", "ExecutionType", "ExecutionQuality", "ExpectedValue",
-            "Entry Quality", "Trade Readiness", "Leverage"
+            "TradeQualityScore", "Entry Quality", "Trade Readiness", "Leverage"
         ]
         cols = [c for c in columns if c in table.columns]
         print(table[cols].to_string(index=False))
@@ -64,7 +64,6 @@ class ReportEngine:
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
 
-            # نمایش جزئیات معامله فقط برای BUY/SELL
             if item.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
                 targets = item.get("Targets", [])
                 if targets:
@@ -87,8 +86,14 @@ class ReportEngine:
                 print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
                 print(f"Leverage: {item.get('Leverage', 'N/A')}x")
                 print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
+                print(f"Trade Quality: {item.get('TradeQualityScore', 'N/A')}%")
             else:
                 print("Status: Waiting for confirmation.")
+                watch_info = item.get("WatchInfo", {})
+                if watch_info:
+                    print("Watch Details:")
+                    for k, v in watch_info.items():
+                        print(f"  {k}: {v}")
 
             summary = item.get("Summary", {})
             print(f"Current Status: {summary.get('Current Status', '')}")
@@ -99,7 +104,7 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
-        # جزئیات کامل (برای همه)
+        # جزئیات کامل
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -133,8 +138,14 @@ class ReportEngine:
                 print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
                 print(f"Leverage: {item.get('Leverage', 'N/A')}x")
                 print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
+                print(f"Trade Quality: {item.get('TradeQualityScore', 'N/A')}%")
             else:
                 print("Status: Waiting for confirmation.")
+                watch_info = item.get("WatchInfo", {})
+                if watch_info:
+                    print("Watch Details:")
+                    for k, v in watch_info.items():
+                        print(f"  {k}: {v}")
 
             print(f"Reasons: {item.get('Reasons', '')}")
             print(f"Warnings: {item.get('Warnings', '')}")
