@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value
+Market Scanner – Adaptive Sizing, Liquidity Execution, Expected Value, Position Risk Reason
 """
 
 from market_structure import MarketStructure
@@ -216,17 +216,18 @@ class MarketScanner:
                         volatility_state, vol_z
                     )
 
-                # Decision نهایی با در نظر گرفتن EV و liquidity
+                # Decision نهایی با در نظر گرفتن Trade Planner و EV و liquidity
                 final_action = initial_action
                 if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
                     if not plan["valid"]:
                         final_action = "WATCH"
+                        decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
                     elif ENABLE_EXPECTED_VALUE and ev <= MIN_EXPECTED_VALUE:
                         final_action = "WATCH"
-                        decision["summary"]["Current Status"] = f"Expected Value non-positive ({ev}R)"
+                        decision["summary"]["Current Status"] += f" EV={ev}R"
                     elif ENABLE_LIQUIDITY_EXECUTION and exec_analysis.get("execution_quality", 100) < MIN_EXECUTION_QUALITY:
                         final_action = "WATCH"
-                        decision["summary"]["Current Status"] = f"Low execution quality ({exec_analysis['execution_quality']}%)"
+                        decision["summary"]["Current Status"] += f" ExecQual={exec_analysis['execution_quality']}"
 
                 stop_loss = plan["stop_loss"]
                 targets = plan["targets"]
@@ -234,7 +235,27 @@ class MarketScanner:
                 rr = plan["rr"]
 
                 suggested_leverage = RiskManager.suggest_leverage(entry, stop_loss, original_side)
-                input_pct = risk_pct * 100   # درصد ریسک تطبیقی
+                input_pct = risk_pct * 100
+
+                # Position Risk Reason
+                position_risk_reason = ""
+                if ENABLE_ADAPTIVE_POSITION_SIZING:
+                    parts = []
+                    if atr_val > 0.03: parts.append("High Volatility")
+                    elif atr_val < 0.01: parts.append("Low Volatility")
+                    if df["ADX"].iloc[-1] >= 40: parts.append("Strong Trend")
+                    elif df["ADX"].iloc[-1] < 15: parts.append("Weak Trend")
+                    if decision["confidence"] > 80: parts.append("High Confidence")
+                    if decision["trade_readiness"] > 80: parts.append("High Readiness")
+                    if mtf_agreement == 1.0: parts.append("MTF Aligned")
+                    elif mtf_agreement == 0.5: parts.append("Partial MTF")
+                    if vol_z > 1.0: parts.append("High Volume")
+                    if news_score_val > 5: parts.append("Positive News")
+                    elif news_score_val < -5: parts.append("Negative News")
+                    if macro_risk_active: parts.append("Macro Risk")
+                    position_risk_reason = ", ".join(parts) if parts else "Neutral"
+                else:
+                    position_risk_reason = "Fixed 1%"
 
                 results.append({
                     "Symbol": symbol,
@@ -260,6 +281,7 @@ class MarketScanner:
                     "Leverage": suggested_leverage,
                     "InputPct": input_pct,
                     "PositionRisk": f"{risk_pct*100:.2f}%",
+                    "PositionRiskReason": position_risk_reason,
                     "ExecutionType": exec_analysis.get("execution_type", "N/A"),
                     "ExecutionQuality": exec_analysis.get("execution_quality", 0),
                     "ExpectedValue": f"{ev:+.2f}R",
