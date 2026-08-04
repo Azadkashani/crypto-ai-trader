@@ -56,66 +56,26 @@ class RiskManager:
     @staticmethod
     def adaptive_risk_pct(atr, adx, market_structure_quality, confidence, trade_readiness,
                           mtf_agreement, volume_z, news_score, sentiment_score, macro_risk):
-        """
-        محاسبهٔ درصد ریسک تطبیقی بین MIN_POSITION_RISK و MAX_POSITION_RISK
-        بر اساس کیفیت سیگنال و شرایط بازار.
-        """
         if not ENABLE_ADAPTIVE_POSITION_SIZING:
-            return RISK_PER_TRADE   # مقدار ثابت پیش‌فرض
-
-        # امتیاز پایه (۰ تا ۱)
+            return RISK_PER_TRADE
         score = 0.5
-
-        # ATR: نوسان بالا → ریسک کمتر
-        if atr > 0.03:  # 3% نوسان روزانه
-            score -= 0.1
-        elif atr < 0.01:
-            score += 0.1
-
-        # ADX: روند قوی → ریسک بیشتر
-        if adx >= 40:
-            score += 0.15
-        elif adx >= 25:
-            score += 0.1
-        elif adx < 15:
-            score -= 0.1
-
-        # کیفیت ساختار بازار (از trade_planner می‌توان گرفت، اینجا ساده‌سازی)
+        if atr > 0.03: score -= 0.1
+        elif atr < 0.01: score += 0.1
+        if adx >= 40: score += 0.15
+        elif adx >= 25: score += 0.1
+        elif adx < 15: score -= 0.1
         score += market_structure_quality * 0.1
-
-        # Confidence و Readiness
         score += (confidence / 100.0 - 0.5) * 0.2
         score += (trade_readiness / 100.0 - 0.5) * 0.2
-
-        # هم‌جهتی MTF
-        if mtf_agreement > 0.8:
-            score += 0.1
-        elif mtf_agreement < 0.3:
-            score -= 0.1
-
-        # حجم
-        if volume_z > 1.0:
-            score += 0.1
-        elif volume_z < -1.0:
-            score -= 0.1
-
-        # News و Sentiment
-        if news_score > 5:
-            score += 0.1
-        elif news_score < -5:
-            score -= 0.1
-        if sentiment_score > 5:
-            score += 0.05
-        elif sentiment_score < -5:
-            score -= 0.05
-
-        # ریسک ماکرو
-        if macro_risk:
-            score -= 0.15
-
-        # محدود کردن
+        if mtf_agreement > 0.8: score += 0.1
+        elif mtf_agreement < 0.3: score -= 0.1
+        if volume_z > 1.0: score += 0.1
+        elif volume_z < -1.0: score -= 0.1
+        if news_score > 5: score += 0.1
+        elif news_score < -5: score -= 0.1
+        if sentiment_score > 5: score += 0.05
+        elif sentiment_score < -5: score -= 0.05
+        if macro_risk: score -= 0.15
         score = max(0.0, min(1.0, score))
-
-        # تبدیل به درصد ریسک
         risk_pct = MIN_POSITION_RISK + (MAX_POSITION_RISK - MIN_POSITION_RISK) * score
         return round(risk_pct, 4)
