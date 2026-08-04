@@ -179,7 +179,7 @@ class MarketScanner:
                 entry = float(df.iloc[-1]["close"])
                 atr_val = df["ATR"].iloc[-1] if df["ATR"].iloc[-1] > 0 else 0.0001
 
-                # Trade Planner (همیشه اجرا می‌شود، اما فقط برای BUY/SELL اعمال می‌شود)
+                # Trade Planner
                 plan = self.planner.plan(df, market_structure, advanced_data, plan_action, entry)
 
                 # اعتبارسنجی تطبیقی
@@ -192,17 +192,12 @@ class MarketScanner:
                 if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
                     if not plan["valid"]:
                         if best_rr >= 1.5 and best_ev > 0 and best_prob >= 0.4:
-                            # معامله را با هشدار قبول کن
                             decision["summary"]["Current Status"] = f"Trade approved with RR={best_rr:.2f} (positive EV)"
                             trade_valid = True
                             warnings.append(f"RR below minimum ({MIN_RISK_REWARD}) but EV={best_ev:.2f}")
                         else:
                             final_action = "WATCH"
                             decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
-
-                # اگر trade_valid=True و نیاز به بررسی EV و Execution Quality باشد
-                if trade_valid and final_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
-                    # EV و Liquidity بعداً حساب می‌شوند
 
                 # ===== اجرای تحلیل اجرا (با مدیریت خطای کامل) =====
                 exec_analysis = {
@@ -217,7 +212,6 @@ class MarketScanner:
                         )
                     except Exception:
                         traceback.print_exc()
-                        # مقادیر پیش‌فرض باقی می‌مانند
 
                 # Liquidity label
                 liq_risk_val = exec_analysis["liquidity_risk"]
@@ -284,8 +278,6 @@ class MarketScanner:
                         strength, news_score_val, sentiment_score_val,
                         volatility_state, vol_z
                     )
-                else:
-                    ev = None
 
                 # Leverage
                 suggested_leverage = RiskManager.suggest_leverage(
@@ -297,7 +289,7 @@ class MarketScanner:
                 )
                 input_pct = risk_pct * 100
 
-                # Trade Quality Score (همیشه محاسبه می‌شود)
+                # Trade Quality Score
                 exec_q = exec_analysis["execution_quality"]
                 ev_norm = max(0, min(100, (best_ev + 2) * 25)) if best_ev != -999 else 0
                 risk_score = 100 - (risk_pct / cfg.MAX_POSITION_RISK * 100) if cfg.MAX_POSITION_RISK > 0 else 50
@@ -324,7 +316,7 @@ class MarketScanner:
                 else:
                     position_risk_reason = "Fixed 1%"
 
-                # Watch Info (برای WATCH)
+                # Watch Info
                 watch_info = {}
                 if final_action in ("WATCH",):
                     if trend == "Bullish":
