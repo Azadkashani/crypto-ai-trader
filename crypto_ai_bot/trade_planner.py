@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Ultra‑safe extraction, no dict‑float errors
+Institutional‑Grade Trade Planner – Fully Safe Extraction, Improved Probability, Multi‑Target Validation
 """
 
 import numpy as np
@@ -19,7 +19,6 @@ class TradePlanner:
     # -----------------------------------------------------------------
     def plan(self, df: pd.DataFrame, market_structure: dict,
              advanced_data: dict, action: str, entry_price: float) -> dict:
-        # اطمینان از float بودن ورودی‌های حیاتی
         try:
             entry = float(entry_price)
         except:
@@ -31,50 +30,54 @@ class TradePlanner:
 
         side = "buy" if "BUY" in action else "sell"
 
-        # 1. حد ضرر
+        # 1. Stop Loss
         sl = self._calculate_stop_loss(side, entry, atr, market_structure, advanced_data)
 
-        # 2. اهداف
+        # 2. Targets
         targets = self._calculate_targets(side, entry, atr, sl, market_structure, advanced_data)
 
-        # 3. اعتبارسنجی
+        # 3. Validation across all targets
         valid = False
-        rr = 0.0
-        reward = 0.0
+        best_rr = 0.0
+        best_reward = 0.0
         risk = abs(entry - sl)
         if risk == 0:
-            return self._invalid_plan(entry, sl, "Risk is zero.")
+            return self._invalid_plan(entry, sl, "Risk is zero.", targets)
 
+        reasons = []
         for t in targets:
             t_rr = abs(t["price"] - entry) / risk
             t["rr"] = round(t_rr, 2)
             if t_rr >= self.min_rr and t["probability"] >= 0.3:
-                valid = True
-                reward = abs(t["price"] - entry)
-                rr = t_rr
-                break
+                if not valid or t_rr > best_rr:   # pick best RR among valid targets
+                    valid = True
+                    best_rr = t_rr
+                    best_reward = abs(t["price"] - entry)
 
         if not valid:
-            return {
-                "entry": entry,
-                "stop_loss": round(sl, 4),
-                "targets": targets,
-                "risk": round(risk, 4),
-                "reward": 0,
-                "rr": 0,
-                "valid": False,
-                "reasons": [f"No target meets minimum RR ({self.min_rr}) or probability (0.3)."]
-            }
+            reasons.append(f"No target meets minimum RR ({self.min_rr}) or probability (0.3)")
 
         return {
             "entry": entry,
             "stop_loss": round(sl, 4),
             "targets": targets,
             "risk": round(risk, 4),
-            "reward": round(reward, 4),
-            "rr": round(rr, 2),
-            "valid": True,
-            "reasons": []
+            "reward": round(best_reward, 4),
+            "rr": round(best_rr, 2),
+            "valid": valid,
+            "reasons": reasons
+        }
+
+    def _invalid_plan(self, entry, sl, reason, targets=[]):
+        return {
+            "entry": entry,
+            "stop_loss": sl,
+            "targets": targets,
+            "risk": 0,
+            "reward": 0,
+            "rr": 0,
+            "valid": False,
+            "reasons": [reason]
         }
 
     # -----------------------------------------------------------------
@@ -154,19 +157,23 @@ class TradePlanner:
         return cand
 
     def _safe_float(self, value):
-        """تبدیل ایمن به float؛ پشتیبانی از دیکشنری‌های تودرتو و لیست‌ها"""
+        """Extract a float from int/float, dict (look for 'price','value','close','high','low'), list, or string."""
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, dict):
-            # جستجوی کلیدهای معمول
             for key in ("price", "value", "close", "open", "high", "low"):
                 if key in value:
                     return self._safe_float(value[key])
-            # اگر هیچ کلید عددی نبود، خود دیکشنری را نمی‌توان تبدیل کرد
+            # if dict has only one numeric value, use that
+            for v in value.values():
+                if isinstance(v, (int, float)):
+                    return float(v)
             return None
         if isinstance(value, (list, tuple)):
-            if len(value) > 0:
-                return self._safe_float(value[0])
+            for item in value:
+                res = self._safe_float(item)
+                if res is not None:
+                    return res
             return None
         try:
             return float(value)
@@ -207,7 +214,7 @@ class TradePlanner:
 
         targets = []
         for cl in chosen:
-            prob = self._estimate_probability(cl, side, entry, atr, ms)
+            prob = self._estimate_probability(cl, side, entry, atr, ms, adv)
             targets.append({
                 "price": round(cl["price"], 4),
                 "pct": round((cl["price"] / entry - 1) * 100, 2) if side == "buy"
@@ -221,6 +228,7 @@ class TradePlanner:
             targets = [self._atr_target(side, entry, atr, sl, emergency=True)]
             return targets
 
+        # sort by distance
         if side == "buy":
             targets.sort(key=lambda x: x["price"])
         else:
@@ -327,13 +335,21 @@ class TradePlanner:
             score *= 0.8
         return min(1.0, score)
 
-    def _estimate_probability(self, cluster, side, entry, atr, ms):
-        base = cluster["score"] * 0.7
+    def _estimate_probability(self, cluster, side, entry, atr, ms, adv):
+        base = cluster["score"] * 0.6
         dist = abs(cluster["price"] - entry) / atr if atr > 0 else 1
-        dist_factor = max(0.2, 1 - 0.1 * dist)
+        dist_factor = max(0.15, 1 - 0.12 * dist)
         strength = ms.get("strength", "Medium")
-        trend_bonus = 0.15 if strength == "Very Strong" else 0.1 if strength == "Strong" else 0.0
-        prob = base * dist_factor + trend_bonus
+        trend_bonus = 0.15 if strength == "Very Strong" else 0.08 if strength == "Strong" else 0.0
+        # liquidity bonus
+        liq_bonus = 0.0
+        ob = adv.get("order_block") if adv else None
+        if ob and ob.get("valid"):
+            liq_bonus += 0.05
+        fvg = adv.get("fvg") if adv else None
+        if fvg and fvg.get("active_fvg"):
+            liq_bonus += 0.05
+        prob = base * dist_factor + trend_bonus + liq_bonus
         return min(0.95, max(0.05, prob))
 
     def _atr_target(self, side, entry, atr, sl, emergency=False):
@@ -345,16 +361,4 @@ class TradePlanner:
             "rr": round(rr, 2),
             "probability": 0.1 if emergency else 0.3,
             "label": "TP1 (ATR fallback)" if emergency else "TP1 (ATR)"
-        }
-
-    def _invalid_plan(self, entry, sl, reason):
-        return {
-            "entry": entry,
-            "stop_loss": sl,
-            "targets": [],
-            "risk": 0,
-            "reward": 0,
-            "rr": 0,
-            "valid": False,
-            "reasons": [reason]
         }
