@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Fully Safe Extraction, Improved Probability, Multi‑Target Validation
+Institutional‑Grade Trade Planner – Ultra‑Safe, Improved Probability, Multi‑Target Validation
 """
 
 import numpy as np
@@ -16,7 +16,6 @@ class TradePlanner:
         self.max_targets = 3
         self.min_sl_distance_atr = 0.5
 
-    # -----------------------------------------------------------------
     def plan(self, df: pd.DataFrame, market_structure: dict,
              advanced_data: dict, action: str, entry_price: float) -> dict:
         try:
@@ -30,13 +29,9 @@ class TradePlanner:
 
         side = "buy" if "BUY" in action else "sell"
 
-        # 1. Stop Loss
         sl = self._calculate_stop_loss(side, entry, atr, market_structure, advanced_data)
-
-        # 2. Targets
         targets = self._calculate_targets(side, entry, atr, sl, market_structure, advanced_data)
 
-        # 3. Validation across all targets
         valid = False
         best_rr = 0.0
         best_reward = 0.0
@@ -49,7 +44,7 @@ class TradePlanner:
             t_rr = abs(t["price"] - entry) / risk
             t["rr"] = round(t_rr, 2)
             if t_rr >= self.min_rr and t["probability"] >= 0.3:
-                if not valid or t_rr > best_rr:   # pick best RR among valid targets
+                if not valid or t_rr > best_rr:
                     valid = True
                     best_rr = t_rr
                     best_reward = abs(t["price"] - entry)
@@ -80,7 +75,7 @@ class TradePlanner:
             "reasons": [reason]
         }
 
-    # -----------------------------------------------------------------
+    # --- Stop Loss ---
     def _calculate_stop_loss(self, side, entry, atr, ms, adv):
         candidates = self._gather_sl_candidates(side, entry, ms, adv)
         if not candidates:
@@ -107,7 +102,6 @@ class TradePlanner:
 
     def _gather_sl_candidates(self, side, entry, ms, adv):
         cand = []
-        # Swing High/Low
         for s in ms.get("swing_highs", []):
             price = self._safe_float(s)
             if price is not None:
@@ -117,7 +111,6 @@ class TradePlanner:
             if price is not None:
                 cand.append({"price": price, "type": "swing_low"})
 
-        # Order Blocks
         ob = adv.get("order_block") if adv else None
         if ob and ob.get("valid"):
             if ob.get("bullish_ob") and side == "buy":
@@ -127,7 +120,6 @@ class TradePlanner:
                 price = self._safe_float(ob["bearish_ob"].get("high"))
                 if price: cand.append({"price": price, "type": "ob_bearish"})
 
-        # SR Strength
         sr = adv.get("sr_strength") if adv else None
         if sr:
             if side == "buy" and sr.get("valid_support"):
@@ -137,7 +129,6 @@ class TradePlanner:
                 price = self._safe_float(sr.get("resistance_level"))
                 if price: cand.append({"price": price, "type": "resistance_50"})
 
-        # FVG
         fvg = adv.get("fvg") if adv else None
         if fvg and fvg.get("active_fvg"):
             act = fvg["active_fvg"]
@@ -148,7 +139,6 @@ class TradePlanner:
                 price = self._safe_float(act.get("gap_high"))
                 if price: cand.append({"price": price, "type": "fvg_bearish"})
 
-        # POC
         vp = adv.get("volume_profile") if adv else None
         if vp:
             poc = self._safe_float(vp.get("poc"))
@@ -157,14 +147,12 @@ class TradePlanner:
         return cand
 
     def _safe_float(self, value):
-        """Extract a float from int/float, dict (look for 'price','value','close','high','low'), list, or string."""
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, dict):
             for key in ("price", "value", "close", "open", "high", "low"):
                 if key in value:
                     return self._safe_float(value[key])
-            # if dict has only one numeric value, use that
             for v in value.values():
                 if isinstance(v, (int, float)):
                     return float(v)
@@ -197,7 +185,7 @@ class TradePlanner:
         else:
             return entry + atr * mult
 
-    # -----------------------------------------------------------------
+    # --- Targets ---
     def _calculate_targets(self, side, entry, atr, sl, ms, adv):
         raw = self._gather_tp_candidates(side, entry, ms, adv)
         if not raw:
@@ -228,7 +216,6 @@ class TradePlanner:
             targets = [self._atr_target(side, entry, atr, sl, emergency=True)]
             return targets
 
-        # sort by distance
         if side == "buy":
             targets.sort(key=lambda x: x["price"])
         else:
@@ -241,7 +228,6 @@ class TradePlanner:
 
     def _gather_tp_candidates(self, side, entry, ms, adv):
         levels = []
-        # Swing
         for s in ms.get("swing_highs", []):
             p = self._safe_float(s)
             if p and ((side == "buy" and p > entry) or (side == "sell" and p < entry)):
@@ -251,7 +237,6 @@ class TradePlanner:
             if p and ((side == "sell" and p < entry) or (side == "buy" and p > entry)):
                 levels.append({"price": p, "type": "swing_low", "quality": 0.9})
 
-        # Order Blocks
         ob = adv.get("order_block") if adv else None
         if ob and ob.get("valid"):
             if side == "buy" and ob.get("bearish_ob"):
@@ -261,7 +246,6 @@ class TradePlanner:
                 p = self._safe_float(ob["bullish_ob"].get("low"))
                 if p and p < entry: levels.append({"price": p, "type": "ob_bullish", "quality": 0.85})
 
-        # SR
         sr = adv.get("sr_strength") if adv else None
         if sr:
             if side == "buy" and sr.get("valid_resistance"):
@@ -271,7 +255,6 @@ class TradePlanner:
                 p = self._safe_float(sr.get("support_level"))
                 if p and p < entry: levels.append({"price": p, "type": "support_50", "quality": 0.75})
 
-        # FVG
         fvg = adv.get("fvg") if adv else None
         if fvg and fvg.get("active_fvg"):
             act = fvg["active_fvg"]
@@ -282,21 +265,18 @@ class TradePlanner:
                 p = self._safe_float(act.get("gap_low"))
                 if p and p < entry: levels.append({"price": p, "type": "fvg_bullish", "quality": 0.7})
 
-        # VWAP
         vwap_data = adv.get("vwap") if adv else None
         if vwap_data:
             p = self._safe_float(vwap_data.get("vwap"))
             if p and ((side == "buy" and p > entry) or (side == "sell" and p < entry)):
                 levels.append({"price": p, "type": "vwap", "quality": 0.6})
 
-        # POC
         vp = adv.get("volume_profile") if adv else None
         if vp:
             p = self._safe_float(vp.get("poc"))
             if p and ((side == "buy" and p > entry) or (side == "sell" and p < entry)):
                 levels.append({"price": p, "type": "poc", "quality": 0.5})
 
-        # Fibonacci
         fib = adv.get("fibonacci") if adv else None
         if fib and fib.get("levels"):
             for lvl in ["1.272", "1.618"]:
@@ -341,7 +321,6 @@ class TradePlanner:
         dist_factor = max(0.15, 1 - 0.12 * dist)
         strength = ms.get("strength", "Medium")
         trend_bonus = 0.15 if strength == "Very Strong" else 0.08 if strength == "Strong" else 0.0
-        # liquidity bonus
         liq_bonus = 0.0
         ob = adv.get("order_block") if adv else None
         if ob and ob.get("valid"):
