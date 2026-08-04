@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – Including Adaptive Sizing, Execution, EV
+Advanced Report Engine – Full Details Including PositionRisk Reason, R:R, EV
 """
 
 import pandas as pd
@@ -73,6 +73,8 @@ class ReportEngine:
                 print("Take Profit: N/A")
 
             print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
+            if item.get('PositionRiskReason'):
+                print(f"  Reason: {item['PositionRiskReason']}")
             print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
             print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
             print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
@@ -89,7 +91,6 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
-        # جزئیات کامل (برای همه)
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -109,11 +110,13 @@ class ReportEngine:
                 for t in targets:
                     print(f"  {t['label']}: {smart_price(t['price'])} ({t['pct']:+.2f}%) | R:R={t['rr']} | Prob={t['probability']}")
             print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
+            if item.get('PositionRiskReason'):
+                print(f"  Reason: {item['PositionRiskReason']}")
             print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
             print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
             print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
-            print(f"Input: {item.get('InputPct', 'N/A')}%")
+            print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
             print(f"Reasons: {item.get('Reasons', '')}")
             print(f"Warnings: {item.get('Warnings', '')}")
             print("-" * 75)
