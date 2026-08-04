@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Strict RR, unified trade_valid, separated targets
+Market Scanner – Fixed volatility_state initialization
 """
 
 import traceback
@@ -185,10 +185,8 @@ class MarketScanner:
                         final_action = "WATCH"
                         trade_valid = False
                         decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
-                    else:
-                        trade_valid = True  # plan valid, keep action
 
-                # After all checks, ensure trade_valid matches final_action
+                # Ensure trade_valid matches final action
                 trade_valid = (final_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"))
 
                 # Execution analysis (safe)
@@ -251,6 +249,7 @@ class MarketScanner:
                              "Medium" if risk_pct >= cfg.MIN_POSITION_RISK * 2 else "Low"
 
                 # Expected Value (only when valid)
+                volatility_state = "Normal"   # مقدار پیش‌فرض
                 ev = None
                 if ENABLE_EXPECTED_VALUE and trade_valid and plan["targets"]:
                     volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
@@ -263,7 +262,7 @@ class MarketScanner:
 
                 suggested_leverage = RiskManager.suggest_leverage(
                     entry, plan["stop_loss"], original_side,
-                    volatility=volatility_state if ENABLE_EXPECTED_VALUE else "Normal",
+                    volatility=volatility_state,
                     confidence=decision["confidence"],
                     execution_quality=exec_analysis["execution_quality"],
                     ev=plan.get("best_ev", 0)
