@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Adaptive RR with EV support
+Institutional‑Grade Trade Planner – Separates valid/invalid targets, strict RR
 """
 
 import numpy as np
@@ -31,15 +31,12 @@ class TradePlanner:
 
         side = "buy" if "BUY" in action else "sell"
 
-        # 1. Gather all SL candidates
         sl_candidates = self._gather_sl_candidates(side, entry, ms=market_structure, adv=advanced_data)
-        # 2. Gather all TP candidates
         tp_candidates = self._gather_tp_candidates(side, entry, atr, ms=market_structure, adv=advanced_data)
 
         if not tp_candidates:
             tp_candidates = self._atr_fallback_targets(side, entry, atr, count=3)
 
-        # Cluster and sort
         clustered_tp = self._cluster_levels(tp_candidates, entry, atr)
         if side == "buy":
             clustered_tp.sort(key=lambda x: x["price"])
@@ -63,12 +60,50 @@ class TradePlanner:
 
         best_plan = self._optimize_sl_and_validate(entry, sl_candidates, chosen_targets, side, atr, market_structure)
 
-        for t in best_plan["targets"]:
-            self._normalize_target(t, entry, side)
-            if best_plan["stop_loss"] is not None:
-                risk = abs(entry - best_plan["stop_loss"])
+        # Separate valid and invalid targets based on RR and probability
+        risk = best_plan["risk"]
+        valid_targets = []
+        invalid_targets = []
+        for t in chosen_targets:
+            rr = abs(t["price"] - entry) / risk if risk > 0 else 0
+            prob = t.get("probability", 0.5)
+            if rr >= self.min_rr and prob >= 0.3:
+                valid_targets.append(t)
+            else:
+                invalid_targets.append(t)
+
+        # Reorder valid targets by distance (nearest first)
+        if side == "buy":
+            valid_targets.sort(key=lambda x: x["price"])
+        else:
+            valid_targets.sort(key=lambda x: x["price"], reverse=True)
+
+        # Update labels for valid targets
+        for i, t in enumerate(valid_targets):
+            t["label"] = f"TP{i+1}"
+
+        # Final RR for all targets
+        if best_plan["stop_loss"] is not None:
+            risk = abs(entry - best_plan["stop_loss"])
+            for t in chosen_targets:
                 t["rr"] = round(abs(t["price"] - entry) / risk, 2) if risk > 0 else 0.0
-        return best_plan
+
+        # Determine validity: at least one valid target and a good SL found
+        plan_valid = len(valid_targets) > 0 and best_plan["valid"]
+
+        return {
+            "entry": entry,
+            "stop_loss": best_plan["stop_loss"],
+            "targets": valid_targets,
+            "invalid_targets": invalid_targets,
+            "risk": round(risk, 4),
+            "reward": round(best_plan["reward"], 4),
+            "rr": round(best_plan["rr"], 2),
+            "valid": plan_valid,
+            "reasons": best_plan.get("reasons", []),
+            "best_ev": best_plan.get("best_ev", 0),
+            "best_prob": best_plan.get("best_prob", 0)
+        }
 
     # -----------------------------------------------------------------
     @staticmethod
@@ -356,7 +391,7 @@ class TradePlanner:
             return {
                 "entry": entry,
                 "stop_loss": round(best_sl, 4),
-                "targets": targets,
+                "targets": targets,  # all targets, later we separate
                 "risk": round(risk_final, 4),
                 "reward": round(best_reward, 4),
                 "rr": round(best_rr, 2),
