@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Fully Bulletproof float extraction
+Institutional‑Grade Trade Planner – Optimized, Three Targets, Robust
 """
 
 import numpy as np
@@ -12,7 +12,7 @@ class TradePlanner:
     def __init__(self, config):
         self.min_rr = config.MIN_RISK_REWARD
         self.atr_buffer_factor = 0.2
-        self.cluster_atr_mult = 0.3
+        self.cluster_pct = 0.1              # cluster levels closer than 0.1% of price
         self.max_targets = 3
         self.min_sl_distance_atr = 0.5
 
@@ -30,73 +30,53 @@ class TradePlanner:
 
         side = "buy" if "BUY" in action else "sell"
 
-        sl = self._calculate_stop_loss(side, entry, atr, market_structure, advanced_data)
-        targets = self._calculate_targets(side, entry, atr, sl, market_structure, advanced_data)
+        # 1. Gather all SL candidates
+        sl_candidates = self._gather_sl_candidates(side, entry, ms=market_structure, adv=advanced_data)
+        # 2. Gather all TP candidates
+        tp_candidates = self._gather_tp_candidates(side, entry, ms=market_structure, adv=advanced_data)
 
-        valid = False
-        best_rr = 0.0
-        best_reward = 0.0
-        risk = abs(entry - sl)
-        if risk == 0:
-            return self._invalid_plan(entry, sl, "Risk is zero.", targets)
+        # If no TP candidates, create ATR fallback set
+        if not tp_candidates:
+            tp_candidates = self._atr_fallback_targets(side, entry, atr, count=3)
 
-        reasons = []
-        for t in targets:
-            t_rr = abs(t["price"] - entry) / risk
-            t["rr"] = round(t_rr, 2)
-            if t_rr >= self.min_rr and t["probability"] >= 0.3:
-                if not valid or t_rr > best_rr:
-                    valid = True
-                    best_rr = t_rr
-                    best_reward = abs(t["price"] - entry)
+        # Cluster TP candidates (only very close duplicates)
+        clustered_tp = self._cluster_levels(tp_candidates, entry, atr)
 
-        if not valid:
-            reasons.append(f"No target meets minimum RR ({self.min_rr}) or probability (0.3)")
+        # Sort by distance from entry (nearest first)
+        if side == "buy":
+            clustered_tp.sort(key=lambda x: x["price"])   # ascending
+        else:
+            clustered_tp.sort(key=lambda x: x["price"], reverse=True)  # descending
 
-        return {
-            "entry": entry,
-            "stop_loss": round(sl, 4),
-            "targets": targets,
-            "risk": round(risk, 4),
-            "reward": round(best_reward, 4),
-            "rr": round(best_rr, 2),
-            "valid": valid,
-            "reasons": reasons
-        }
+        # Select up to max_targets independent targets
+        chosen_targets = self._select_independent_targets(clustered_tp, atr, entry, side)
 
-    def _invalid_plan(self, entry, sl, reason, targets=[]):
-        return {
-            "entry": entry,
-            "stop_loss": sl,
-            "targets": targets,
-            "risk": 0,
-            "reward": 0,
-            "rr": 0,
-            "valid": False,
-            "reasons": [reason]
-        }
+        # Ensure at least max_targets (fill with ATR if needed)
+        while len(chosen_targets) < self.max_targets:
+            fallback = self._create_atr_target(side, entry, atr, len(chosen_targets)+1)
+            if fallback:
+                chosen_targets.append(fallback)
+
+        # Assign probabilities
+        for t in chosen_targets:
+            t["probability"] = self._estimate_probability(t["price"], entry, atr, market_structure, advanced_data, side)
+
+        # 3. Optimize SL and validate RR
+        best_plan = self._optimize_sl_and_validate(entry, sl_candidates, chosen_targets, side, atr, market_structure)
+
+        return best_plan
 
     # -----------------------------------------------------------------
-    # Universal safe float extractor
+    # Safe float extraction
     # -----------------------------------------------------------------
     @staticmethod
     def _safe_float(value):
-        """
-        Extract a float from almost anything:
-        - int/float → itself
-        - dict → search for 'price','value','close','open','high','low' recursively
-        - list/tuple → try first element
-        - str → try to convert
-        Returns None if impossible.
-        """
         if isinstance(value, (int, float)):
             return float(value)
         if isinstance(value, dict):
-            # priority keys
             for key in ("price", "value", "close", "open", "high", "low"):
                 if key in value:
                     return TradePlanner._safe_float(value[key])
-            # if no known key, search all values for first numeric
             for v in value.values():
                 res = TradePlanner._safe_float(v)
                 if res is not None:
@@ -114,32 +94,8 @@ class TradePlanner:
             return None
 
     # -----------------------------------------------------------------
-    # Stop Loss
+    # Gather Stop Loss candidates
     # -----------------------------------------------------------------
-    def _calculate_stop_loss(self, side, entry, atr, ms, adv):
-        candidates = self._gather_sl_candidates(side, entry, ms, adv)
-        if not candidates:
-            return self._atr_fallback(side, entry, atr, ms)
-
-        for c in candidates:
-            c["score"] = self._score_level(c, ms, adv, atr)
-
-        valid = [c for c in candidates if (side == "buy" and c["price"] < entry) or
-                                          (side == "sell" and c["price"] > entry)]
-        if not valid:
-            return self._atr_fallback(side, entry, atr, ms)
-
-        best = max(valid, key=lambda x: x["score"])
-        buffer = atr * self.atr_buffer_factor
-        if side == "buy":
-            sl_candidate = best["price"] - buffer
-        else:
-            sl_candidate = best["price"] + buffer
-
-        if abs(entry - sl_candidate) < self.min_sl_distance_atr * atr:
-            return self._atr_fallback(side, entry, atr, ms)
-        return sl_candidate
-
     def _gather_sl_candidates(self, side, entry, ms, adv):
         cand = []
         # Swing High/Low
@@ -183,25 +139,19 @@ class TradePlanner:
                 price = self._safe_float(act.get("gap_high"))
                 if price: cand.append({"price": price, "type": "fvg_bearish"})
 
-        # POC
+        # POC (if directionally favorable)
         vp = adv.get("volume_profile") if adv else None
         if vp:
             poc = self._safe_float(vp.get("poc"))
             if poc and ((side == "buy" and poc < entry) or (side == "sell" and poc > entry)):
                 cand.append({"price": poc, "type": "poc"})
+
+        # add ATR fallback as last resort
+        atr = 0.001  # placeholder, will be overwritten
+        cand.append({"price": self._atr_sl(side, entry, atr, ms), "type": "atr"})
         return cand
 
-    def _score_level(self, cand, ms, adv, atr):
-        weights = {
-            "swing_low": 0.9, "swing_high": 0.9,
-            "ob_bullish": 0.85, "ob_bearish": 0.85,
-            "support_50": 0.7, "resistance_50": 0.7,
-            "fvg_bullish": 0.6, "fvg_bearish": 0.6,
-            "poc": 0.5
-        }
-        return weights.get(cand["type"], 0.5)
-
-    def _atr_fallback(self, side, entry, atr, ms):
+    def _atr_sl(self, side, entry, atr, ms):
         mult = 1.5 if ms.get("trend") in ("bullish", "bearish") else 2.0
         if side == "buy":
             return entry - atr * mult
@@ -209,50 +159,8 @@ class TradePlanner:
             return entry + atr * mult
 
     # -----------------------------------------------------------------
-    # Targets
+    # Gather Take Profit candidates
     # -----------------------------------------------------------------
-    def _calculate_targets(self, side, entry, atr, sl, ms, adv):
-        raw = self._gather_tp_candidates(side, entry, ms, adv)
-        if not raw:
-            return [self._atr_target(side, entry, atr, sl, emergency=True)]
-
-        clusters = self._cluster_levels(raw, atr)
-        for cl in clusters:
-            cl["score"] = self._score_cluster(cl, side, entry, ms, adv)
-            # representative price = member with highest quality
-            best = max(cl["members"], key=lambda x: x.get("quality", 0.5))
-            cl["price"] = best["price"]   # already float
-
-        clusters.sort(key=lambda x: x["score"], reverse=True)
-        chosen = clusters[:self.max_targets]
-
-        targets = []
-        for cl in chosen:
-            prob = self._estimate_probability(cl, side, entry, atr, ms, adv)
-            targets.append({
-                "price": round(cl["price"], 4),
-                "pct": round((cl["price"] / entry - 1) * 100, 2) if side == "buy"
-                       else round((entry / cl["price"] - 1) * 100, 2),
-                "rr": 0.0,
-                "probability": round(prob, 2),
-                "label": ""
-            })
-
-        if not targets:
-            targets = [self._atr_target(side, entry, atr, sl, emergency=True)]
-            return targets
-
-        # sort by distance
-        if side == "buy":
-            targets.sort(key=lambda x: x["price"])
-        else:
-            targets.sort(key=lambda x: x["price"], reverse=True)
-
-        for i, t in enumerate(targets):
-            t["label"] = f"TP{i+1}"
-
-        return targets
-
     def _gather_tp_candidates(self, side, entry, ms, adv):
         levels = []
         # Swing
@@ -324,54 +232,184 @@ class TradePlanner:
 
         return levels
 
-    def _cluster_levels(self, levels, atr):
+    # -----------------------------------------------------------------
+    # Clustering: merge only very close levels (0.1% of price)
+    # -----------------------------------------------------------------
+    def _cluster_levels(self, levels, entry, atr):
         if not levels: return []
+        threshold = entry * self.cluster_pct / 100.0  # e.g., 0.001 * price
         levels_sorted = sorted(levels, key=lambda x: x["price"])
-        threshold = atr * self.cluster_atr_mult
         clusters = []
-        current = [levels_sorted[0]]
+        current_cluster = [levels_sorted[0]]
         for lvl in levels_sorted[1:]:
-            if lvl["price"] - current[-1]["price"] <= threshold:
-                current.append(lvl)
+            if lvl["price"] - current_cluster[-1]["price"] <= threshold:
+                current_cluster.append(lvl)
             else:
-                clusters.append({"members": current})
-                current = [lvl]
-        clusters.append({"members": current})
-        return clusters
+                clusters.append({"members": current_cluster})
+                current_cluster = [lvl]
+        clusters.append({"members": current_cluster})
+        # For each cluster, pick the member with highest quality
+        result = []
+        for cl in clusters:
+            best = max(cl["members"], key=lambda x: x.get("quality", 0.5))
+            result.append({"price": best["price"], "type": best["type"], "quality": best["quality"]})
+        return result
 
-    def _score_cluster(self, cluster, side, entry, ms, adv):
-        total_q = sum(m.get("quality", 0.5) for m in cluster["members"])
-        avg_q = total_q / len(cluster["members"])
-        size_bonus = min(0.2, 0.05 * len(cluster["members"]))
-        score = avg_q + size_bonus
-        dist = abs(cluster["members"][0]["price"] - entry)
-        if dist < 0.5 * adv.get("atr_volatility", {}).get("atr_ratio", 1):
-            score *= 0.8
-        return min(1.0, score)
+    # -----------------------------------------------------------------
+    # Select independent targets (at least ATR distance apart)
+    # -----------------------------------------------------------------
+    def _select_independent_targets(self, clustered, atr, entry, side):
+        selected = []
+        for level in clustered:
+            # Check distance from all already selected
+            if all(abs(level["price"] - s["price"]) > atr * 0.5 for s in selected):
+                selected.append(level)
+            if len(selected) >= self.max_targets:
+                break
+        return selected
 
-    def _estimate_probability(self, cluster, side, entry, atr, ms, adv):
-        base = cluster["score"] * 0.6
-        dist = abs(cluster["price"] - entry) / atr if atr > 0 else 1
-        dist_factor = max(0.15, 1 - 0.12 * dist)
+    # -----------------------------------------------------------------
+    # ATR fallback targets (multiple)
+    # -----------------------------------------------------------------
+    def _atr_fallback_targets(self, side, entry, atr, count=3):
+        mults = [1.5, 2.5, 4.0]  # realistic distances
+        targets = []
+        for i, mult in enumerate(mults[:count]):
+            if side == "buy":
+                tp = entry + atr * mult
+            else:
+                tp = entry - atr * mult
+            targets.append({"price": tp, "type": "atr", "quality": 0.3})
+        return targets
+
+    def _create_atr_target(self, side, entry, atr, index):
+        mults = [1.5, 2.5, 4.0]
+        if index-1 < len(mults):
+            mult = mults[index-1]
+            if side == "buy":
+                price = entry + atr * mult
+            else:
+                price = entry - atr * mult
+            return {"price": price, "type": "atr", "quality": 0.3, "probability": 0.3}
+        return None
+
+    # -----------------------------------------------------------------
+    # Probability estimation (distance, trend, liquidity, structure)
+    # -----------------------------------------------------------------
+    def _estimate_probability(self, target_price, entry, atr, ms, adv, side):
+        dist_atr = abs(target_price - entry) / atr if atr > 0 else 1
+        # Distance factor: closer = higher probability
+        if dist_atr <= 1:
+            base = 0.7
+        elif dist_atr <= 2:
+            base = 0.5
+        elif dist_atr <= 3:
+            base = 0.35
+        else:
+            base = 0.2
+
+        # Trend strength
         strength = ms.get("strength", "Medium")
-        trend_bonus = 0.15 if strength == "Very Strong" else 0.08 if strength == "Strong" else 0.0
-        liq_bonus = 0.0
-        ob = adv.get("order_block") if adv else None
-        if ob and ob.get("valid"):
-            liq_bonus += 0.05
-        fvg = adv.get("fvg") if adv else None
-        if fvg and fvg.get("active_fvg"):
-            liq_bonus += 0.05
-        prob = base * dist_factor + trend_bonus + liq_bonus
-        return min(0.95, max(0.05, prob))
+        if strength == "Very Strong":
+            base += 0.15
+        elif strength == "Strong":
+            base += 0.08
 
-    def _atr_target(self, side, entry, atr, sl, emergency=False):
-        tp_price = entry + atr * 2 if side == "buy" else entry - atr * 2
-        rr = abs(tp_price - entry) / abs(entry - sl) if abs(entry - sl) > 0 else 2.0
+        # Liquidity bonuses (OB, FVG, VP)
+        if adv.get("order_block", {}).get("valid"):
+            base += 0.05
+        if adv.get("fvg", {}).get("active_fvg"):
+            base += 0.05
+        vp = adv.get("volume_profile")
+        if vp and self._safe_float(vp.get("poc")):
+            poc = self._safe_float(vp["poc"])
+            if abs(target_price - poc) / entry < 0.01:
+                base += 0.05
+
+        # Market regime penalty for ranging
+        regime = adv.get("market_regime")
+        if regime and "Ranging" in regime.get("regime", ""):
+            base *= 0.8
+
+        return round(min(0.95, max(0.05, base)), 2)
+
+    # -----------------------------------------------------------------
+    # Optimize SL and validate RR
+    # -----------------------------------------------------------------
+    def _optimize_sl_and_validate(self, entry, sl_candidates, targets, side, atr, ms):
+        # Score SL candidates (closer to entry = better, but must be structurally valid)
+        # We prefer the closest valid level that still respects min_sl_distance_atr
+        best_sl = None
+        best_rr = 0
+        best_reward = 0
+        valid_target = None
+        reasons = []
+
+        # Try each SL candidate (except ATR fallback, which is last resort)
+        for sl_cand in sl_candidates:
+            sl_price = sl_cand["price"]
+            # Check direction validity
+            if side == "buy" and sl_price >= entry: continue
+            if side == "sell" and sl_price <= entry: continue
+
+            # Check minimum distance (ATR safety)
+            if abs(entry - sl_price) < self.min_sl_distance_atr * atr:
+                continue
+
+            risk = abs(entry - sl_price)
+            # Evaluate all targets with this SL
+            for t in targets:
+                reward = abs(t["price"] - entry)
+                rr = reward / risk if risk > 0 else 0
+                prob = t.get("probability", 0.5)
+                if rr >= self.min_rr and prob >= 0.3:
+                    if rr > best_rr:
+                        best_rr = rr
+                        best_reward = reward
+                        best_sl = sl_price
+                        valid_target = t
+
+        # If a good SL was found, return plan
+        if best_sl is not None and valid_target is not None:
+            return {
+                "entry": entry,
+                "stop_loss": round(best_sl, 4),
+                "targets": targets,
+                "risk": round(abs(entry - best_sl), 4),
+                "reward": round(best_reward, 4),
+                "rr": round(best_rr, 2),
+                "valid": True,
+                "reasons": reasons
+            }
+
+        # Fallback: use ATR SL and check again
+        atr_sl = self._atr_sl(side, entry, atr, ms)
+        risk = abs(entry - atr_sl)
+        for t in targets:
+            reward = abs(t["price"] - entry)
+            rr = reward / risk if risk > 0 else 0
+            prob = t.get("probability", 0.5)
+            if rr >= self.min_rr and prob >= 0.3:
+                return {
+                    "entry": entry,
+                    "stop_loss": round(atr_sl, 4),
+                    "targets": targets,
+                    "risk": round(risk, 4),
+                    "reward": round(reward, 4),
+                    "rr": round(rr, 2),
+                    "valid": True,
+                    "reasons": []
+                }
+
+        # No valid combination
+        reasons.append(f"No target meets minimum RR ({self.min_rr}) with any valid stop loss.")
         return {
-            "price": round(tp_price, 4),
-            "pct": round(atr / entry * 2 * 100, 2),
-            "rr": round(rr, 2),
-            "probability": 0.1 if emergency else 0.3,
-            "label": "TP1 (ATR fallback)" if emergency else "TP1 (ATR)"
+            "entry": entry,
+            "stop_loss": round(atr_sl, 4) if atr_sl else entry - atr,
+            "targets": targets,
+            "risk": 0,
+            "reward": 0,
+            "rr": 0,
+            "valid": False,
+            "reasons": reasons
         }
