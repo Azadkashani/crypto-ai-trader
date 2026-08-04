@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – Enhanced display with Market Signal, Trade Valid, and Multi-Targets
+Advanced Report Engine – Including Adaptive Sizing, Execution, EV
 """
 
 import pandas as pd
@@ -28,7 +28,6 @@ class ReportEngine:
         table = pd.DataFrame(results)
         table = table.sort_values(by="Trade Readiness", ascending=False)
 
-        # تبدیل ستون حجم
         if "VolumeUSDT" in table.columns:
             table["VolumeUSDT"] = table["VolumeUSDT"].apply(format_volume)
 
@@ -40,7 +39,8 @@ class ReportEngine:
             "Symbol", "Price", "VolumeUSDT", "Trend", "Strength", "MTF_Signal",
             "Confidence", "RSI", "News Score", "Sentiment Score",
             "Score", "Action", "Market Signal", "Trade Valid",
-            "Entry Quality", "Trade Readiness", "Leverage", "InputPct"
+            "PositionRisk", "ExecutionType", "ExecutionQuality", "ExpectedValue",
+            "Entry Quality", "Trade Readiness", "Leverage"
         ]
         cols = [c for c in columns if c in table.columns]
         print(table[cols].to_string(index=False))
@@ -72,8 +72,12 @@ class ReportEngine:
             else:
                 print("Take Profit: N/A")
 
+            print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
+            print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
+            print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
+            print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
+
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
-            print(f"Input: {item.get('InputPct', 'N/A')}%")
             print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
 
             summary = item.get("Summary", {})
@@ -104,6 +108,10 @@ class ReportEngine:
                 print("Targets:")
                 for t in targets:
                     print(f"  {t['label']}: {smart_price(t['price'])} ({t['pct']:+.2f}%) | R:R={t['rr']} | Prob={t['probability']}")
+            print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
+            print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
+            print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
+            print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
             print(f"Leverage: {item.get('Leverage', 'N/A')}x")
             print(f"Input: {item.get('InputPct', 'N/A')}%")
             print(f"Reasons: {item.get('Reasons', '')}")
