@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Risk Manager – Adaptive Position Sizing, Dynamic Leverage
+Risk Manager – Adaptive Position Sizing, Dynamic Leverage based on Position Risk
 """
 
 from config import (
@@ -39,7 +39,15 @@ class RiskManager:
 
     @staticmethod
     def suggest_leverage(entry, stop_loss, side, max_leverage=MAX_LEVERAGE,
-                         volatility="Normal", confidence=50, execution_quality=50, ev=0):
+                         volatility="Normal", confidence=50, execution_quality=50, ev=0,
+                         risk_pct=None):   # پارامتر جدید
+        """
+        محاسبهٔ اهرم بر اساس درصد ریسک واقعی (Position Risk)
+        اگر risk_pct داده نشود، از RISK_PER_TRADE (۱٪) استفاده می‌کند.
+        """
+        if risk_pct is None:
+            risk_pct = RISK_PER_TRADE
+
         if entry <= 0: return 1
         if side in ("buy", "long"):
             sl_distance = entry - stop_loss
@@ -48,22 +56,26 @@ class RiskManager:
         if sl_distance <= 0: return 1
         stop_loss_pct = sl_distance / entry
         if stop_loss_pct == 0: return 1
-        base_leverage = 1
-        if stop_loss_pct < RISK_PER_TRADE:
-            base_leverage = RISK_PER_TRADE / stop_loss_pct
+
+        # پایهٔ اهرم بر اساس درصد ریسک واقعی
+        if stop_loss_pct < risk_pct:
+            base_leverage = risk_pct / stop_loss_pct
         else:
             base_leverage = 1
 
+        # تنظیم بر اساس اعتماد و کیفیت اجرا
         if confidence > 80 and execution_quality > 80:
             base_leverage *= 1.2
         elif confidence < 50 or execution_quality < 50:
             base_leverage *= 0.8
 
+        # تنظیم بر اساس نوسان
         if volatility == "High Volatility":
             base_leverage *= 0.7
         elif volatility == "Low Volatility":
             base_leverage *= 1.1
 
+        # تنظیم بر اساس EV
         if ev > 1.0:
             base_leverage *= 1.1
         elif ev < 0:
