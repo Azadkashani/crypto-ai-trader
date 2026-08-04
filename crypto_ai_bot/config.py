@@ -155,6 +155,11 @@ HIGH_IMPACT_WINDOW_MINUTES = 60
 MIN_24H_VOLUME = 1000000
 
 # ==========================
+# Account Settings
+# ==========================
+ACCOUNT_BALANCE = 10000   # سرمایهٔ فرضی (USDT)
+
+# ==========================
 # Adaptive Position Sizing
 # ==========================
 ENABLE_ADAPTIVE_POSITION_SIZING = True
