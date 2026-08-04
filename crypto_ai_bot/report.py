@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – Safe Target Access, PositionRisk Reason, R:R, EV
+Advanced Report Engine – Safe Display, Conditional Details
 """
 
 import pandas as pd
@@ -64,31 +64,34 @@ class ReportEngine:
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
 
-            targets = item.get("Targets", [])
-            if targets:
-                print("Targets:")
-                for t in targets:
-                    lbl = t.get("label", "TP")
-                    price = t.get("price", 0)
-                    pct = t.get("pct", 0.0)
-                    rr = t.get("rr", 0.0)
-                    prob = t.get("probability", 0.0)
-                    print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
+            # نمایش جزئیات معامله فقط برای BUY/SELL
+            if item.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+                targets = item.get("Targets", [])
+                if targets:
+                    print("Targets:")
+                    for t in targets:
+                        lbl = t.get("label", "TP")
+                        price = t.get("price", 0)
+                        pct = t.get("pct", 0.0)
+                        rr = t.get("rr", 0.0)
+                        prob = t.get("probability", 0.0)
+                        print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
+                else:
+                    print("Take Profit: N/A")
+
+                print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
+                if item.get('PositionRiskReason'):
+                    print(f"  Reason: {item['PositionRiskReason']}")
+                print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
+                print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
+                print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
+                print(f"Leverage: {item.get('Leverage', 'N/A')}x")
+                print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
             else:
-                print("Take Profit: N/A")
-
-            print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
-            if item.get('PositionRiskReason'):
-                print(f"  Reason: {item['PositionRiskReason']}")
-            print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
-            print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
-            print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
-
-            print(f"Leverage: {item.get('Leverage', 'N/A')}x")
-            print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
+                print("Status: Waiting for confirmation.")
 
             summary = item.get("Summary", {})
-            print(f"Status: {summary.get('Current Status', '')}")
+            print(f"Current Status: {summary.get('Current Status', '')}")
             weighted_reasons = item.get("Weighted Reasons", [])
             if weighted_reasons:
                 print("Key Reasons:")
@@ -96,6 +99,7 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
+        # جزئیات کامل (برای همه)
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -109,24 +113,29 @@ class ReportEngine:
                 print(f"24h Volume: {item['VolumeUSDT']} USDT")
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
-            targets = item.get("Targets", [])
-            if targets:
-                print("Targets:")
-                for t in targets:
-                    lbl = t.get("label", "TP")
-                    price = t.get("price", 0)
-                    pct = t.get("pct", 0.0)
-                    rr = t.get("rr", 0.0)
-                    prob = t.get("probability", 0.0)
-                    print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
-            print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
-            if item.get('PositionRiskReason'):
-                print(f"  Reason: {item['PositionRiskReason']}")
-            print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
-            print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
-            print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
-            print(f"Leverage: {item.get('Leverage', 'N/A')}x")
-            print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
+
+            if item.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+                targets = item.get("Targets", [])
+                if targets:
+                    print("Targets:")
+                    for t in targets:
+                        lbl = t.get("label", "TP")
+                        price = t.get("price", 0)
+                        pct = t.get("pct", 0.0)
+                        rr = t.get("rr", 0.0)
+                        prob = t.get("probability", 0.0)
+                        print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
+                print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
+                if item.get('PositionRiskReason'):
+                    print(f"  Reason: {item['PositionRiskReason']}")
+                print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
+                print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
+                print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
+                print(f"Leverage: {item.get('Leverage', 'N/A')}x")
+                print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
+            else:
+                print("Status: Waiting for confirmation.")
+
             print(f"Reasons: {item.get('Reasons', '')}")
             print(f"Warnings: {item.get('Warnings', '')}")
             print("-" * 75)
