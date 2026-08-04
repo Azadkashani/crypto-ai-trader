@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Professional Decision Engine – EV & Liquidity Integration
+Professional Decision Engine – EV, Liquidity, Trade Planner Integration
 """
 
 from weights import WARNING_WEIGHTS
@@ -11,7 +11,7 @@ class DecisionEngine:
     def evaluate(df, market_structure, mtf_signal, strength, advanced_data,
                  buy_score, sell_score, breakout, reasons, warnings,
                  risk_event=False, news_score=0, sentiment_score=0,
-                 rr=None, ev=None, execution_quality=None, liquidity_risk=None):
+                 plan_valid=True, ev=None, execution_quality=None, rr=None):
         last = df.iloc[-1]
         trend = market_structure.get("trend", "sideways")
         bos = market_structure.get("bos", [])
@@ -23,7 +23,7 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence (متقارن) ----
+        # ---- Confidence ----
         conf = 30
         if trend in ("bullish", "bearish"): conf += 10
         if strength == "Very Strong": conf += 20
@@ -68,10 +68,10 @@ class DecisionEngine:
         conf += news_score * 0.5 + sentiment_score * 0.3
         conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness = max(buy_score, sell_score) ----
+        # ---- Trade Readiness ----
         readiness = max(buy_score, sell_score)
 
-        # ---- Action اصلی ----
+        # ---- Action اولیه ----
         if risk_event:
             action = "WATCH"
             decision_reason = "High impact macro event approaching."
@@ -94,26 +94,20 @@ class DecisionEngine:
             action = "NO TRADE"
             decision_reason = "No actionable signal."
 
-        # ---- اعتبارسنجی R:R ----
-        if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL") and rr is not None:
-            if rr < MIN_RISK_REWARD:
+        # ---- تصحیح با Trade Planner ----
+        if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+            if not plan_valid:
+                action = "WATCH"
+                decision_reason = "Trade plan invalid."
+            elif ev is not None and ev <= MIN_EXPECTED_VALUE:
+                action = "WATCH"
+                decision_reason = f"Negative Expected Value ({ev}R)."
+            elif execution_quality is not None and execution_quality < MIN_EXECUTION_QUALITY:
+                action = "WATCH"
+                decision_reason = f"Low execution quality ({execution_quality}%)."
+            elif rr is not None and rr < MIN_RISK_REWARD:
                 action = "WATCH"
                 decision_reason = f"Risk/Reward too low ({rr:.2f} < {MIN_RISK_REWARD})"
-                conf -= 10
-
-        # ---- اعتبارسنجی Expected Value ----
-        if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL") and ev is not None:
-            if ev <= MIN_EXPECTED_VALUE:
-                action = "WATCH"
-                decision_reason = f"Expected Value non-positive ({ev}R)"
-                conf -= 10
-
-        # ---- اعتبارسنجی کیفیت اجرا ----
-        if action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL") and execution_quality is not None:
-            if execution_quality < MIN_EXECUTION_QUALITY:
-                action = "WATCH"
-                decision_reason = f"Low execution quality ({execution_quality}%)"
-                conf -= 10
 
         summary = {
             "Market Bias": "Bullish" if buy_score > sell_score else "Bearish" if sell_score > buy_score else "Sideways",
@@ -123,7 +117,7 @@ class DecisionEngine:
             "Risk Level": "Medium"
         }
 
-        print(f"[DecisionEngine v4.2] buy={buy_score} sell={sell_score} => {action}")
+        print(f"[DecisionEngine v4.3] buy={buy_score} sell={sell_score} => {action}")
         return {
             "action": action,
             "confidence": conf,
