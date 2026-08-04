@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Optimized EV, Filtered Targets, Robust
+Institutional‑Grade Trade Planner – Wider Stop/Target Margins, Optimized EV
 """
 
 import numpy as np
@@ -14,8 +14,8 @@ class TradePlanner:
         self.atr_buffer_factor = 0.2
         self.cluster_pct = 0.1
         self.max_targets = 3
-        self.min_sl_distance_atr = 0.5
-        self.min_target_distance_atr = 0.5   # minimum distance from entry for a valid target
+        self.min_sl_distance_atr = 0.8          # افزایش یافت
+        self.min_target_distance_atr = 0.8       # افزایش یافت
 
     # -----------------------------------------------------------------
     def plan(self, df: pd.DataFrame, market_structure: dict,
@@ -33,46 +33,36 @@ class TradePlanner:
 
         # 1. Gather all SL candidates
         sl_candidates = self._gather_sl_candidates(side, entry, ms=market_structure, adv=advanced_data)
-
-        # 2. Gather all TP candidates (filter out noise)
+        # 2. Gather all TP candidates (filtered with min_target_distance)
         tp_candidates = self._gather_tp_candidates(side, entry, atr, ms=market_structure, adv=advanced_data)
 
-        # If no TP candidates, create ATR fallback set
         if not tp_candidates:
             tp_candidates = self._atr_fallback_targets(side, entry, atr, count=3)
 
-        # Cluster TP candidates (only very close duplicates)
         clustered_tp = self._cluster_levels(tp_candidates, entry, atr)
 
-        # Sort by distance from entry (nearest first)
         if side == "buy":
-            clustered_tp.sort(key=lambda x: x["price"])   # ascending
+            clustered_tp.sort(key=lambda x: x["price"])
         else:
-            clustered_tp.sort(key=lambda x: x["price"], reverse=True)  # descending
+            clustered_tp.sort(key=lambda x: x["price"], reverse=True)
 
-        # Select up to max_targets independent targets (ensuring minimum distance)
         chosen_targets = self._select_independent_targets(clustered_tp, atr, entry, side)
 
-        # Assign labels and probabilities
         for i, t in enumerate(chosen_targets):
             t["label"] = f"TP{i+1}"
             t["probability"] = self._estimate_probability(t["price"], entry, atr, market_structure, advanced_data, side)
 
-        # Ensure at least max_targets (fill with ATR if needed)
         while len(chosen_targets) < self.max_targets:
             fallback = self._create_atr_target(side, entry, atr, len(chosen_targets)+1)
             if fallback:
                 fallback["probability"] = self._estimate_probability(fallback["price"], entry, atr, market_structure, advanced_data, side)
                 chosen_targets.append(fallback)
 
-        # Normalize all targets
         for t in chosen_targets:
             self._normalize_target(t, entry, side)
 
-        # 3. Optimize SL and validate RR using EV maximization
         best_plan = self._optimize_sl_and_validate(entry, sl_candidates, chosen_targets, side, atr, market_structure)
 
-        # Final normalization and RR assignment for all targets based on chosen SL
         for t in best_plan["targets"]:
             self._normalize_target(t, entry, side)
             if best_plan["stop_loss"] is not None:
@@ -120,7 +110,7 @@ class TradePlanner:
         except:
             return None
 
-    # --- SL candidates ---
+    # --- SL candidates unchanged except increased min_sl_distance_atr used in validation ---
     def _gather_sl_candidates(self, side, entry, ms, adv):
         cand = []
         for s in ms.get("swing_highs", []):
@@ -166,8 +156,8 @@ class TradePlanner:
             if poc and ((side == "buy" and poc < entry) or (side == "sell" and poc > entry)):
                 cand.append({"price": poc, "type": "poc"})
 
-        atr = 0.001
-        cand.append({"price": self._atr_sl(side, entry, atr, ms), "type": "atr"})
+        atr_val = 0.001
+        cand.append({"price": self._atr_sl(side, entry, atr_val, ms), "type": "atr"})
         return cand
 
     def _atr_sl(self, side, entry, atr, ms):
@@ -177,7 +167,7 @@ class TradePlanner:
         else:
             return entry + atr * mult
 
-    # --- TP candidates ---
+    # --- TP candidates with increased min distance ---
     def _gather_tp_candidates(self, side, entry, atr, ms, adv):
         levels = []
         min_dist = atr * self.min_target_distance_atr
@@ -243,6 +233,7 @@ class TradePlanner:
 
         return levels
 
+    # --- Clustering, selection, fallback unchanged ---
     def _cluster_levels(self, levels, entry, atr):
         if not levels: return []
         threshold = entry * self.cluster_pct / 100.0
@@ -326,7 +317,6 @@ class TradePlanner:
 
         return round(min(0.95, max(0.05, base)), 2)
 
-    # -----------------------------------------------------------------
     def _optimize_sl_and_validate(self, entry, sl_candidates, targets, side, atr, ms):
         best_ev = -999
         best_sl = None
@@ -348,7 +338,6 @@ class TradePlanner:
                 rr = reward / risk if risk > 0 else 0
                 prob = t.get("probability", 0.5)
                 if rr >= self.min_rr and prob >= 0.3:
-                    # EV = prob * rr - (1 - prob)
                     ev = prob * rr - (1 - prob)
                     if ev > best_ev:
                         best_ev = ev
@@ -358,7 +347,6 @@ class TradePlanner:
                         best_target = t
 
         if best_sl is not None:
-            # Update all targets with final RR
             risk_final = abs(entry - best_sl)
             for t in targets:
                 t["rr"] = round(abs(t["price"] - entry) / risk_final, 2) if risk_final > 0 else 0.0
@@ -373,14 +361,12 @@ class TradePlanner:
                 "reasons": reasons
             }
 
-        # Fallback ATR SL to at least show best possible RR (even if invalid)
         atr_sl = self._atr_sl(side, entry, atr, ms)
         risk_fallback = abs(entry - atr_sl)
         max_rr = 0
         for t in targets:
             rr = abs(t["price"] - entry) / risk_fallback if risk_fallback > 0 else 0
-            if rr > max_rr:
-                max_rr = rr
+            if rr > max_rr: max_rr = rr
         for t in targets:
             t["rr"] = round(abs(t["price"] - entry) / risk_fallback, 2) if risk_fallback > 0 else 0.0
         reasons.append(f"No target meets minimum RR ({self.min_rr}) with any valid stop loss.")
