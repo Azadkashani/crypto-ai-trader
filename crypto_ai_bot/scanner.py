@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Fixed exec_analysis, side detection, EV display
+Market Scanner – Strict RR, unified trade_valid, separated targets
 """
 
 import traceback
@@ -78,7 +78,6 @@ class MarketScanner:
         symbols = self.get_symbols()
         print(f"Scanning {len(symbols)} symbols...\n")
 
-        # دریافت اخبار
         all_raw_news = []
         analyzed_news = []
         if ENABLE_NEWS_ENGINE:
@@ -93,7 +92,6 @@ class MarketScanner:
 
         for symbol in symbols:
             try:
-                # حجم و فیلتر
                 try:
                     ticker = self.data.exchange.fetch_ticker(symbol)
                     volume_24h = ticker.get("quoteVolume", 0) or 0
@@ -150,7 +148,6 @@ class MarketScanner:
                 weighted_reasons = analysis.get("weighted_reasons", [])
                 weighted_warnings = analysis.get("weighted_warnings", [])
 
-                # Decision اولیه
                 decision = DecisionEngine.evaluate(
                     df, market_structure, mtf_signal, strength,
                     advanced_data,
@@ -165,7 +162,6 @@ class MarketScanner:
                 )
 
                 initial_action = decision["action"]
-                # ---- اصلاح جهت معامله: استفاده از روند بازار ----
                 if trend == "Bullish":
                     plan_action = "BUY"
                     original_side = "buy"
@@ -174,32 +170,28 @@ class MarketScanner:
                     original_side = "sell"
                 else:
                     plan_action = "WATCH"
-                    original_side = "buy"   # پیش‌فرض
+                    original_side = "buy"
 
                 entry = float(df.iloc[-1]["close"])
                 atr_val = df["ATR"].iloc[-1] if df["ATR"].iloc[-1] > 0 else 0.0001
 
-                # Trade Planner
                 plan = self.planner.plan(df, market_structure, advanced_data, plan_action, entry)
 
-                # اعتبارسنجی تطبیقی
+                # Strict RR – no adaptive bypass
                 trade_valid = plan["valid"]
-                best_ev = plan.get("best_ev", 0)
-                best_rr = plan.get("rr", 0)
-                best_prob = plan.get("best_prob", 0)
-
                 final_action = initial_action
                 if initial_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
                     if not plan["valid"]:
-                        if best_rr >= 1.5 and best_ev > 0 and best_prob >= 0.4:
-                            decision["summary"]["Current Status"] = f"Trade approved with RR={best_rr:.2f} (positive EV)"
-                            trade_valid = True
-                            warnings.append(f"RR below minimum ({MIN_RISK_REWARD}) but EV={best_ev:.2f}")
-                        else:
-                            final_action = "WATCH"
-                            decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
+                        final_action = "WATCH"
+                        trade_valid = False
+                        decision["summary"]["Current Status"] = f"Trade rejected: {', '.join(plan['reasons'])}"
+                    else:
+                        trade_valid = True  # plan valid, keep action
 
-                # ===== اجرای تحلیل اجرا (با مدیریت خطای کامل) =====
+                # After all checks, ensure trade_valid matches final_action
+                trade_valid = (final_action in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"))
+
+                # Execution analysis (safe)
                 exec_analysis = {
                     "execution_type": "Unknown",
                     "execution_quality": 0,
@@ -213,7 +205,6 @@ class MarketScanner:
                     except Exception:
                         traceback.print_exc()
 
-                # Liquidity label
                 liq_risk_val = exec_analysis["liquidity_risk"]
                 if liq_risk_val > 50:
                     liq_label = "High"
@@ -222,7 +213,7 @@ class MarketScanner:
                 else:
                     liq_label = "Low"
 
-                # Adaptive Position Sizing
+                # Position Sizing
                 if ENABLE_ADAPTIVE_POSITION_SIZING:
                     market_structure_quality = 1.0 if market_structure.get("trend") in ("bullish", "bearish") else 0.5
                     mtf_agreement = 0.0
@@ -247,28 +238,19 @@ class MarketScanner:
                         mtf_agreement, vol_z, news_score_val, sentiment_score_val,
                         macro_risk_active,
                         execution_quality=exec_analysis["execution_quality"],
-                        ev=best_ev, btc_corr=btc_corr, warnings=warnings
+                        ev=plan.get("best_ev", 0), btc_corr=btc_corr, warnings=warnings
                     )
                 else:
                     risk_pct = cfg.RISK_PER_TRADE
 
-                # Position Size and Risk Amount
                 risk_amount = ACCOUNT_BALANCE * risk_pct
                 sl_distance = abs(entry - plan["stop_loss"])
-                if sl_distance > 0:
-                    position_size = risk_amount / sl_distance
-                else:
-                    position_size = 0.0
+                position_size = risk_amount / sl_distance if sl_distance > 0 else 0.0
 
-                # Risk Level
-                if risk_pct >= cfg.MAX_POSITION_RISK * 0.8:
-                    risk_level = "High"
-                elif risk_pct >= cfg.MIN_POSITION_RISK * 2:
-                    risk_level = "Medium"
-                else:
-                    risk_level = "Low"
+                risk_level = "High" if risk_pct >= cfg.MAX_POSITION_RISK * 0.8 else \
+                             "Medium" if risk_pct >= cfg.MIN_POSITION_RISK * 2 else "Low"
 
-                # Expected Value (فقط در صورت معتبر بودن)
+                # Expected Value (only when valid)
                 ev = None
                 if ENABLE_EXPECTED_VALUE and trade_valid and plan["targets"]:
                     volatility_state = advanced_data.get("atr_volatility", {}).get("volatility", "Normal") if advanced_data else "Normal"
@@ -279,19 +261,17 @@ class MarketScanner:
                         volatility_state, vol_z
                     )
 
-                # Leverage
                 suggested_leverage = RiskManager.suggest_leverage(
                     entry, plan["stop_loss"], original_side,
                     volatility=volatility_state if ENABLE_EXPECTED_VALUE else "Normal",
                     confidence=decision["confidence"],
                     execution_quality=exec_analysis["execution_quality"],
-                    ev=best_ev
+                    ev=plan.get("best_ev", 0)
                 )
                 input_pct = risk_pct * 100
 
-                # Trade Quality Score
                 exec_q = exec_analysis["execution_quality"]
-                ev_norm = max(0, min(100, (best_ev + 2) * 25)) if best_ev != -999 else 0
+                ev_norm = max(0, min(100, (plan.get("best_ev", 0) + 2) * 25))
                 risk_score = 100 - (risk_pct / cfg.MAX_POSITION_RISK * 100) if cfg.MAX_POSITION_RISK > 0 else 50
                 trade_quality = int(0.3 * decision["confidence"] + 0.2 * exec_q + 0.2 * ev_norm +
                                    0.15 * (100 - min(liq_risk_val, 100)) + 0.15 * risk_score)
@@ -316,7 +296,6 @@ class MarketScanner:
                 else:
                     position_risk_reason = "Fixed 1%"
 
-                # Watch Info
                 watch_info = {}
                 if final_action in ("WATCH",):
                     if trend == "Bullish":
@@ -356,7 +335,8 @@ class MarketScanner:
                     "StopLoss": plan["stop_loss"],
                     "TP1": plan["targets"][0]["price"] if plan["targets"] else entry + (atr_val * 3),
                     "Targets": plan["targets"],
-                    "RiskReward": round(best_rr, 2),
+                    "InvalidTargets": plan.get("invalid_targets", []),
+                    "RiskReward": round(plan.get("rr", 0), 2),
                     "Leverage": suggested_leverage,
                     "InputPct": input_pct,
                     "PositionRisk": f"{risk_pct*100:.2f}%",
