@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Institutional‑Grade Trade Planner – Optimized, Three Targets, Robust
+Institutional‑Grade Trade Planner – Optimized, Three Targets, Labels Fixed
 """
 
 import numpy as np
@@ -51,15 +51,17 @@ class TradePlanner:
         # Select up to max_targets independent targets
         chosen_targets = self._select_independent_targets(clustered_tp, atr, entry, side)
 
+        # Assign labels and probabilities
+        for i, t in enumerate(chosen_targets):
+            t["label"] = f"TP{i+1}"
+            t["probability"] = self._estimate_probability(t["price"], entry, atr, market_structure, advanced_data, side)
+
         # Ensure at least max_targets (fill with ATR if needed)
         while len(chosen_targets) < self.max_targets:
             fallback = self._create_atr_target(side, entry, atr, len(chosen_targets)+1)
             if fallback:
+                fallback["probability"] = self._estimate_probability(fallback["price"], entry, atr, market_structure, advanced_data, side)
                 chosen_targets.append(fallback)
-
-        # Assign probabilities
-        for t in chosen_targets:
-            t["probability"] = self._estimate_probability(t["price"], entry, atr, market_structure, advanced_data, side)
 
         # 3. Optimize SL and validate RR
         best_plan = self._optimize_sl_and_validate(entry, sl_candidates, chosen_targets, side, atr, market_structure)
@@ -279,7 +281,7 @@ class TradePlanner:
                 tp = entry + atr * mult
             else:
                 tp = entry - atr * mult
-            targets.append({"price": tp, "type": "atr", "quality": 0.3})
+            targets.append({"price": tp, "type": "atr", "quality": 0.3, "label": f"TP{i+1} (ATR)"})
         return targets
 
     def _create_atr_target(self, side, entry, atr, index):
@@ -290,7 +292,7 @@ class TradePlanner:
                 price = entry + atr * mult
             else:
                 price = entry - atr * mult
-            return {"price": price, "type": "atr", "quality": 0.3, "probability": 0.3}
+            return {"price": price, "type": "atr", "quality": 0.3, "label": f"TP{index} (ATR)"}
         return None
 
     # -----------------------------------------------------------------
@@ -298,7 +300,6 @@ class TradePlanner:
     # -----------------------------------------------------------------
     def _estimate_probability(self, target_price, entry, atr, ms, adv, side):
         dist_atr = abs(target_price - entry) / atr if atr > 0 else 1
-        # Distance factor: closer = higher probability
         if dist_atr <= 1:
             base = 0.7
         elif dist_atr <= 2:
@@ -308,14 +309,12 @@ class TradePlanner:
         else:
             base = 0.2
 
-        # Trend strength
         strength = ms.get("strength", "Medium")
         if strength == "Very Strong":
             base += 0.15
         elif strength == "Strong":
             base += 0.08
 
-        # Liquidity bonuses (OB, FVG, VP)
         if adv.get("order_block", {}).get("valid"):
             base += 0.05
         if adv.get("fvg", {}).get("active_fvg"):
@@ -326,7 +325,6 @@ class TradePlanner:
             if abs(target_price - poc) / entry < 0.01:
                 base += 0.05
 
-        # Market regime penalty for ranging
         regime = adv.get("market_regime")
         if regime and "Ranging" in regime.get("regime", ""):
             base *= 0.8
@@ -337,27 +335,21 @@ class TradePlanner:
     # Optimize SL and validate RR
     # -----------------------------------------------------------------
     def _optimize_sl_and_validate(self, entry, sl_candidates, targets, side, atr, ms):
-        # Score SL candidates (closer to entry = better, but must be structurally valid)
-        # We prefer the closest valid level that still respects min_sl_distance_atr
         best_sl = None
         best_rr = 0
         best_reward = 0
         valid_target = None
         reasons = []
 
-        # Try each SL candidate (except ATR fallback, which is last resort)
         for sl_cand in sl_candidates:
             sl_price = sl_cand["price"]
-            # Check direction validity
             if side == "buy" and sl_price >= entry: continue
             if side == "sell" and sl_price <= entry: continue
 
-            # Check minimum distance (ATR safety)
             if abs(entry - sl_price) < self.min_sl_distance_atr * atr:
                 continue
 
             risk = abs(entry - sl_price)
-            # Evaluate all targets with this SL
             for t in targets:
                 reward = abs(t["price"] - entry)
                 rr = reward / risk if risk > 0 else 0
@@ -369,7 +361,6 @@ class TradePlanner:
                         best_sl = sl_price
                         valid_target = t
 
-        # If a good SL was found, return plan
         if best_sl is not None and valid_target is not None:
             return {
                 "entry": entry,
@@ -382,7 +373,6 @@ class TradePlanner:
                 "reasons": reasons
             }
 
-        # Fallback: use ATR SL and check again
         atr_sl = self._atr_sl(side, entry, atr, ms)
         risk = abs(entry - atr_sl)
         for t in targets:
@@ -401,7 +391,6 @@ class TradePlanner:
                     "reasons": []
                 }
 
-        # No valid combination
         reasons.append(f"No target meets minimum RR ({self.min_rr}) with any valid stop loss.")
         return {
             "entry": entry,
