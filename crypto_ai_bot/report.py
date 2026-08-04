@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Advanced Report Engine – Additional Position & Risk Fields
+Advanced Report Engine – EV only for valid, safe access
 """
 
 import pandas as pd
@@ -64,9 +64,10 @@ class ReportEngine:
             print(f"Entry: {smart_price(entry)}")
             print(f"Stop Loss: {smart_price(sl)} ({sl_pct:+.2f}%)")
 
+            # نمایش اهداف (در صورت وجود)
             targets = item.get("Targets", [])
             if targets:
-                if item.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+                if item.get("Trade Valid"):
                     print("Targets:")
                 else:
                     print("Invalid Targets (R:R too low or probability insufficient):")
@@ -78,7 +79,8 @@ class ReportEngine:
                     prob = t.get("probability", 0.0)
                     print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
 
-            if item.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+            # جزئیات معامله فقط برای معاملات معتبر
+            if item.get("Trade Valid"):
                 print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
                 if item.get('PositionRiskReason'):
                     print(f"  Reason: {item['PositionRiskReason']}")
@@ -88,7 +90,9 @@ class ReportEngine:
                 print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
                 print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
                 print(f"Liquidity Risk: {item.get('LiquidityRisk', 'N/A')}")
-                print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
+                # EV فقط در صورت معتبر بودن نمایش داده می‌شود
+                ev_str = item.get("ExpectedValue", "N/A")
+                print(f"Expected Value: {ev_str}")
                 print(f"Leverage: {item.get('Leverage', 'N/A')}x")
                 print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
                 print(f"Trade Quality: {item.get('TradeQualityScore', 'N/A')}%")
@@ -109,7 +113,7 @@ class ReportEngine:
                     print(f"  {r}")
             print("")
 
-        # جزئیات کامل
+        # جزئیات کامل (همه نمادها)
         print("\n" + "-" * 75)
         for item in results:
             entry = item.get("Entry", 0)
@@ -126,7 +130,7 @@ class ReportEngine:
 
             targets = item.get("Targets", [])
             if targets:
-                if item.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+                if item.get("Trade Valid"):
                     print("Targets:")
                 else:
                     print("Invalid Targets (R:R too low or probability insufficient):")
@@ -138,7 +142,7 @@ class ReportEngine:
                     prob = t.get("probability", 0.0)
                     print(f"  {lbl}: {smart_price(price)} ({pct:+.2f}%) | R:R={rr} | Prob={prob}")
 
-            if item.get("Action") in ("BUY", "SELL", "STRONG BUY", "STRONG SELL"):
+            if item.get("Trade Valid"):
                 print(f"Position Risk: {item.get('PositionRisk', 'N/A')}")
                 if item.get('PositionRiskReason'):
                     print(f"  Reason: {item['PositionRiskReason']}")
@@ -148,7 +152,8 @@ class ReportEngine:
                 print(f"Execution Type: {item.get('ExecutionType', 'N/A')}")
                 print(f"Execution Quality: {item.get('ExecutionQuality', 'N/A')}%")
                 print(f"Liquidity Risk: {item.get('LiquidityRisk', 'N/A')}")
-                print(f"Expected Value: {item.get('ExpectedValue', 'N/A')}")
+                ev_str = item.get("ExpectedValue", "N/A")
+                print(f"Expected Value: {ev_str}")
                 print(f"Leverage: {item.get('Leverage', 'N/A')}x")
                 print(f"Risk/Reward: {item.get('RiskReward', 'N/A')}")
                 print(f"Trade Quality: {item.get('TradeQualityScore', 'N/A')}%")
