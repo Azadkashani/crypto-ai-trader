@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Professional Decision Engine – EV, Liquidity, Trade Planner Integration
+Professional Decision Engine – Capped Confidence, Warning Penalties, Dynamic Readiness
 """
 
 from weights import WARNING_WEIGHTS
@@ -23,7 +23,7 @@ class DecisionEngine:
                (trend == "bearish" and last_event["type"] == "bullish"):
                 opposing_choch = True
 
-        # ---- Confidence ----
+        # ---- Confidence (capped at 98) ----
         conf = 30
         if trend in ("bullish", "bearish"): conf += 10
         if strength == "Very Strong": conf += 20
@@ -65,11 +65,26 @@ class DecisionEngine:
         oi = advanced_data.get("open_interest") if advanced_data else None
         if oi and oi.get("state") == "Long Unwinding": conf -= 2
         if macd_div and macd_div.get("bearish_div"): conf -= 4
-        conf += news_score * 0.5 + sentiment_score * 0.3
-        conf = max(10, min(100, conf))
 
-        # ---- Trade Readiness ----
+        # Warning penalties
+        warning_text = " ".join(warnings)
+        if "Premium Zone" in warning_text or "Price Near Resistance" in warning_text:
+            conf -= 5
+        if "Bearish Divergence" in warning_text:
+            conf -= 5
+
+        conf += news_score * 0.5 + sentiment_score * 0.3
+        conf = max(10, min(98, conf))   # cap at 98%
+
+        # ---- Trade Readiness (dynamic) ----
         readiness = max(buy_score, sell_score)
+        if execution_quality is not None:
+            readiness = readiness * 0.6 + execution_quality * 0.2 + (confidence:=conf) * 0.2
+        if ev is not None and ev > 0:
+            readiness += 5
+        if risk_event:
+            readiness -= 10
+        readiness = max(0, min(100, int(readiness)))
 
         # ---- Action اولیه ----
         if risk_event:
