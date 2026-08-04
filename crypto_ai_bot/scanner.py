@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Market Scanner – Fixed volatility_state initialization
+Market Scanner – Fixed volatility_state & leverage based on position risk
 """
 
 import traceback
@@ -265,7 +265,8 @@ class MarketScanner:
                     volatility=volatility_state,
                     confidence=decision["confidence"],
                     execution_quality=exec_analysis["execution_quality"],
-                    ev=plan.get("best_ev", 0)
+                    ev=plan.get("best_ev", 0),
+                    risk_pct=risk_pct          # ← اضافه شدن درصد ریسک واقعی
                 )
                 input_pct = risk_pct * 100
 
