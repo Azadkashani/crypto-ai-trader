@@ -14,7 +14,7 @@ TESTNET = False
 # ==========================
 # Trading Settings
 # ==========================
-USE_ALL_MARKETS = False          # استفاده از لیست دستی
+USE_ALL_MARKETS = False
 SYMBOLS = [
     "ETH/USDT:USDT",
     "BTC/USDT:USDT",
@@ -118,7 +118,7 @@ SYMBOLS = [
 MAX_SYMBOLS = 100
 TOP_RESULTS = 5
 
-TIMEFRAME = "1h"
+TIMEFRAME = "5m"                  # تایم‌فریم اصلی اسکنر (۵ دقیقه)
 LIMIT = 200
 
 # ==========================
@@ -206,7 +206,7 @@ MIN_24H_VOLUME = 1000000
 # ==========================
 # Account Settings
 # ==========================
-ACCOUNT_BALANCE = 10000   # سرمایهٔ فرضی (USDT)
+ACCOUNT_BALANCE = 10000
 
 # ==========================
 # Adaptive Position Sizing
