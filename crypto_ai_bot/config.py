@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Configuration File (Custom 89 Futures Symbols)
+Configuration File (Fetch symbols from exchange)
 """
 
 # ==========================
@@ -14,111 +14,12 @@ TESTNET = False
 # ==========================
 # Trading Settings
 # ==========================
-USE_ALL_MARKETS = False
-SYMBOLS = [
-    "ETH/USDT:USDT",
-    "BTC/USDT:USDT",
-    "SOL/USDT:USDT",
-    "XAU/USDT:USDT",
-    "CL/USDT:USDT",
-    "HOME/USDT:USDT",
-    "XAG/USDT:USDT",
-    "XRP/USDT:USDT",
-    "ADA/USDT:USDT",
-    "BLESS/USDT:USDT",
-    "HYPE/USDT:USDT",
-    "AKE/USDT:USDT",
-    "SKYAI/USDT:USDT",
-    "RATS/USDT:USDT",
-    "BEAT/USDT:USDT",
-    "DOGE/USDT:USDT",
-    "BANK/USDT:USDT",
-    "ZEC/USDT:USDT",
-    "BNB/USDT:USDT",
-    "UNI/USDT:USDT",
-    "UAI/USDT:USDT",
-    "PEPE/USDT:USDT",
-    "WLD/USDT:USDT",
-    "BZ/USDT:USDT",
-    "XAUT/USDT:USDT",
-    "UB/USDT:USDT",
-    "AVAX/USDT:USDT",
-    "GIGGLE/USDT:USDT",
-    "BTW/USDT:USDT",
-    "BICO/USDT:USDT",
-    "CYS/USDT:USDT",
-    "GRAM/USDT:USDT",
-    "PUMP/USDT:USDT",
-    "SUI/USDT:USDT",
-    "PAXG/USDT:USDT",
-    "ENA/USDT:USDT",
-    "KAITO/USDT:USDT",
-    "LINK/USDT:USDT",
-    "BCH/USDT:USDT",
-    "DEXE/USDT:USDT",
-    "COTI/USDT:USDT",
-    "AAVE/USDT:USDT",
-    "TAO/USDT:USDT",
-    "NEAR/USDT:USDT",
-    "FARTCOIN/USDT:USDT",
-    "SHIB/USDT:USDT",
-    "DOT/USDT:USDT",
-    "EPIC/USDT:USDT",
-    "TUT/USDT:USDT",
-    "TRUMP/USDT:USDT",
-    "HFT/USDT:USDT",
-    "LTC/USDT:USDT",
-    "LAB/USDT:USDT",
-    "WIF/USDT:USDT",
-    "KOMA/USDT:USDT",
-    "WLFI/USDT:USDT",
-    "VANRY/USDT:USDT",
-    "XLM/USDT:USDT",
-    "LIT/USDT:USDT",
-    "US/USDT:USDT",
-    "FIL/USDT:USDT",
-    "APT/USDT:USDT",
-    "ARB/USDT:USDT",
-    "ORDI/USDT:USDT",
-    "INJ/USDT:USDT",
-    "PENGU/USDT:USDT",
-    "FET/USDT:USDT",
-    "ESPORTS/USDT:USDT",
-    "TRX/USDT:USDT",
-    "ALLO/USDT:USDT",
-    "TIA/USDT:USDT",
-    "VELVET/USDT:USDT",
-    "LDO/USDT:USDT",
-    "IDOL/USDT:USDT",
-    "ERA/USDT:USDT",
-    "ZAMA/USDT:USDT",
-    "ETHFI/USDT:USDT",
-    "ICP/USDT:USDT",
-    "EUL/USDT:USDT",
-    "CFX/USDT:USDT",
-    "PTB/USDT:USDT",
-    "PIEVERSE/USDT:USDT",
-    "PIPPIN/USDT:USDT",
-    "ETC/USDT:USDT",
-    "CAP/USDT:USDT",
-    "RIF/USDT:USDT",
-    "VIRTUAL/USDT:USDT",
-    "LA/USDT:USDT",
-    "VVV/USDT:USDT",
-    "BOME/USDT:USDT",
-    "XPT/USDT:USDT",
-    "SLX/USDT:USDT",
-    "ESP/USDT:USDT",
-    "PI/USDT:USDT",
-    "PEOPLE/USDT:USDT",
-    "GALA/USDT:USDT",
-    "AEON/USDT:USDT",
-    "MMT/USDT:USDT"
-]
-MAX_SYMBOLS = 100
+USE_ALL_MARKETS = True          # دریافت خودکار از صرافی
+SYMBOLS = []                    # (دیگر استفاده نمی‌شود، ولی می‌تواند خالی باشد)
+MAX_SYMBOLS = 100               # حداکثر تعداد نمادهای برتر برای تحلیل
 TOP_RESULTS = 5
 
-TIMEFRAME = "5m"                  # تایم‌فریم اصلی اسکنر (۵ دقیقه)
+TIMEFRAME = "5m"                # تایم‌فریم اصلی اسکنر (۵ دقیقه)
 LIMIT = 200
 
 # ==========================
@@ -206,7 +107,7 @@ MIN_24H_VOLUME = 1000000
 # ==========================
 # Account Settings
 # ==========================
-ACCOUNT_BALANCE = 10000
+ACCOUNT_BALANCE = 10000   # سرمایهٔ فرضی (USDT)
 
 # ==========================
 # Adaptive Position Sizing
