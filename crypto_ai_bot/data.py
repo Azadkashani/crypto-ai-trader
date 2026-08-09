@@ -17,7 +17,7 @@ class MarketData:
                 "options": {"defaultType": "swap"}   # Perpetual Futures
             })
             if TESTNET:
-                self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT برای تست‌نت
+                self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT
         else:
             raise Exception("Exchange Not Supported")
 
