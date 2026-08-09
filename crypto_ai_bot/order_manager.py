@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Order Manager – Gate.io Testnet (correct URL structure + trailing stop)
+Order Manager – Gate.io Testnet (official sandbox method)
 """
 
 import ccxt
@@ -16,20 +16,7 @@ class OrderManager:
             'options': {'defaultType': 'swap'},
         })
         if TESTNET:
-            # تنظیم صحیح آدرس‌های تست‌نت
-            testnet_url = "https://fx-api-testnet.gateio.ws/api/v4"
-            self.exchange.urls['api']['public'] = {
-                'futures': testnet_url,
-                'spot': testnet_url,
-                'margin': testnet_url,
-                'delivery': testnet_url,
-            }
-            self.exchange.urls['api']['private'] = {
-                'futures': testnet_url,
-                'spot': testnet_url,
-                'margin': testnet_url,
-                'delivery': testnet_url,
-            }
+            self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT برای تست‌نت
 
     def set_leverage(self, symbol, leverage):
         try:
@@ -73,20 +60,13 @@ class OrderManager:
         return [p for p in positions if float(p.get('size', 0)) != 0]
 
     def modify_stop_loss(self, symbol, sl_order_id, new_stop_price, quantity):
-        """
-        لغو حد ضرر قبلی و ایجاد یک سفارش جدید با قیمت به‌روز شده.
-        """
         try:
-            # لغو سفارش قدیمی
             self.exchange.cancel_order(sl_order_id, symbol)
-            # پیدا کردن موقعیت فعلی برای تعیین جهت بستن
             positions = self.exchange.fetch_positions(symbols=[symbol])
             pos = next((p for p in positions if float(p.get('size', 0)) != 0), None)
             if not pos:
                 return None
-            # پوزیشن لانگ → sell برای بستن؛ شورت → buy
             sl_side = 'sell' if pos.get('side') == 'long' else 'buy'
-            # سفارش جدید حد ضرر
             new_sl = self.exchange.create_order(
                 symbol=symbol,
                 type='stop_market',
