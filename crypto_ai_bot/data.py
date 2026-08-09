@@ -17,20 +17,7 @@ class MarketData:
                 "options": {"defaultType": "swap"}   # Perpetual Futures
             })
             if TESTNET:
-                # تنظیم صحیح آدرس‌های تست‌نت
-                testnet_url = "https://fx-api-testnet.gateio.ws/api/v4"
-                self.exchange.urls['api']['public'] = {
-                    'futures': testnet_url,
-                    'spot': testnet_url,
-                    'margin': testnet_url,
-                    'delivery': testnet_url,
-                }
-                self.exchange.urls['api']['private'] = {
-                    'futures': testnet_url,
-                    'spot': testnet_url,
-                    'margin': testnet_url,
-                    'delivery': testnet_url,
-                }
+                self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT برای تست‌نت
         else:
             raise Exception("Exchange Not Supported")
 
