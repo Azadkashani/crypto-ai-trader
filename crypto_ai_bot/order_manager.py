@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Order Manager – Gate.io Testnet (official sandbox)
+Order Manager – Gate.io Testnet (fixed position check + min amount)
 """
 
 import ccxt
@@ -16,7 +16,7 @@ class OrderManager:
             'options': {'defaultType': 'swap'},
         })
         if TESTNET:
-            self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT
+            self.exchange.set_sandbox_mode(True)
 
     def set_leverage(self, symbol, leverage):
         try:
@@ -25,6 +25,16 @@ class OrderManager:
             print(f"Error setting leverage: {e}")
 
     def place_market_order(self, symbol, side, quantity, stop_loss, take_profit, entry_price):
+        # بررسی حداقل حجم معامله
+        try:
+            market = self.exchange.market(symbol)
+            min_amount = market.get('limits', {}).get('amount', {}).get('min', 0)
+            if quantity < min_amount:
+                print(f"Quantity {quantity} is below minimum {min_amount}. Adjusting to minimum.")
+                quantity = min_amount
+        except Exception as e:
+            print(f"Could not check min amount, using provided quantity: {e}")
+
         dynamic_lev = RiskManager.suggest_leverage(entry_price, stop_loss, side, max_leverage=50)
         print(f"Using dynamic leverage: {dynamic_lev}x")
         self.set_leverage(symbol, dynamic_lev)
@@ -56,14 +66,23 @@ class OrderManager:
         return {'entry_order': order, 'sl_order': sl_order, 'tp_order': tp_order}
 
     def check_open_positions(self, symbol=None):
+        """
+        دریافت پوزیشن‌های باز فیوچرز.
+        در Gate.io، سایز پوزیشن ممکن است در فیلد contracts یا size باشد.
+        """
         positions = self.exchange.fetch_positions(symbols=[symbol] if symbol else None)
-        return [p for p in positions if float(p.get('size', 0)) != 0]
+        open_pos = []
+        for p in positions:
+            size = float(p.get('contracts', p.get('size', 0)))
+            if size != 0:
+                open_pos.append(p)
+        return open_pos
 
     def modify_stop_loss(self, symbol, sl_order_id, new_stop_price, quantity):
         try:
             self.exchange.cancel_order(sl_order_id, symbol)
             positions = self.exchange.fetch_positions(symbols=[symbol])
-            pos = next((p for p in positions if float(p.get('size', 0)) != 0), None)
+            pos = next((p for p in positions if float(p.get('contracts', p.get('size', 0))) != 0), None)
             if not pos:
                 return None
             sl_side = 'sell' if pos.get('side') == 'long' else 'buy'
