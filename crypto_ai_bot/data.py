@@ -14,11 +14,27 @@ class MarketData:
         if EXCHANGE_NAME.lower() == "gate":
             self.exchange = ccxt.gate({
                 "enableRateLimit": True,
-                "options": {"defaultType": "swap"}   # Perpetual Futures
+                "options": {"defaultType": "swap"}
             })
             if TESTNET:
-                # روش رسمی CCXT برای فعال‌سازی تست‌نت
-                self.exchange.set_sandbox_mode(True)
+                # تنظیم دستی آدرس‌های تست‌نت
+                testnet_url = 'https://fx-api-testnet.gateio.ws/api/v4'
+                self.exchange.urls['api']['futures'] = {
+                    'public': testnet_url,
+                    'private': testnet_url,
+                }
+                self.exchange.urls['api']['spot'] = {
+                    'public': testnet_url,
+                    'private': testnet_url,
+                }
+                self.exchange.urls['api']['margin'] = {
+                    'public': testnet_url,
+                    'private': testnet_url,
+                }
+                self.exchange.urls['api']['delivery'] = {
+                    'public': testnet_url,
+                    'private': testnet_url,
+                }
         else:
             raise Exception("Exchange Not Supported")
 
