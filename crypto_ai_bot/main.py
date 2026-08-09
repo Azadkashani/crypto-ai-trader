@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Main Trading Loop – Testnet / Live (Robust)
+Main Trading Loop – Testnet / Live (Real balance display + robust)
 """
 
 import time
@@ -63,14 +63,14 @@ def main():
                 time.sleep(SCAN_INTERVAL_MINUTES * 60)
                 continue
 
-            # بررسی پوزیشن‌های باز
+            # بررسی پوزیشن‌های باز (اولین بار)
             open_positions = order_mgr.check_open_positions()
             if len(open_positions) >= MAX_OPEN_TRADES:
                 print("A position is already open. Waiting...")
                 time.sleep(SCAN_INTERVAL_MINUTES * 60)
                 continue
 
-            # بررسی موجودی
+            # بررسی موجودی واقعی
             balance = order_mgr.fetch_balance()
             if balance <= 0:
                 print("Insufficient balance.")
@@ -91,7 +91,21 @@ def main():
                 time.sleep(SCAN_INTERVAL_MINUTES * 60)
                 continue
 
+            # ===== بازنویسی اعداد نمایشی بر اساس موجودی واقعی =====
+            real_risk_amount = balance * risk_pct
+            real_position_size_pct = (quantity * entry / balance * 100) if balance > 0 else 0
+            best_trade["PositionSizePct"] = f"{real_position_size_pct:.1f}%"
+            best_trade["RiskAmount"] = round(real_risk_amount, 2)
+
+            # ===== Double-check بلافاصله قبل از create_order =====
+            open_positions = order_mgr.check_open_positions()
+            if len(open_positions) >= MAX_OPEN_TRADES:
+                print("Position opened in the meantime. Skipping...")
+                time.sleep(SCAN_INTERVAL_MINUTES * 60)
+                continue
+
             print(f"Opening {action} on {symbol}: Entry={entry}, SL={stop_loss}, TP={tp1}, Qty={quantity}")
+            print(f"Real Balance: {balance:.2f} USDT, Risk: {risk_pct*100:.2f}%, Amount: {real_risk_amount:.2f} USDT")
             order_result = order_mgr.place_market_order(
                 symbol=symbol, side=side, quantity=quantity,
                 stop_loss=stop_loss, take_profit=tp1, entry_price=entry,
