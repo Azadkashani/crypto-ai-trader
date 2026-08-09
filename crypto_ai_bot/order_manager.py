@@ -16,9 +16,15 @@ class OrderManager:
             'options': {'defaultType': 'swap'},
         })
         if TESTNET:
-            self.exchange.urls['api'] = {
-                'public': 'https://fx-api-testnet.gateio.ws/api/v4',
-                'private': 'https://fx-api-testnet.gateio.ws/api/v4',
+            # تنظیم آدرس‌های تست‌نت برای فیوچرز و اسپات
+            testnet_url = 'https://fx-api-testnet.gateio.ws/api/v4'
+            self.exchange.urls['api']['futures'] = {
+                'public': testnet_url,
+                'private': testnet_url,
+            }
+            self.exchange.urls['api']['spot'] = {
+                'public': testnet_url,
+                'private': testnet_url,
             }
 
     def set_leverage(self, symbol, leverage):
