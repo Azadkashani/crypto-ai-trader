@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Order Manager – Gate.io Testnet (official sandbox method)
+Order Manager – Gate.io Testnet (official sandbox)
 """
 
 import ccxt
@@ -16,7 +16,7 @@ class OrderManager:
             'options': {'defaultType': 'swap'},
         })
         if TESTNET:
-            self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT برای تست‌نت
+            self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT
 
     def set_leverage(self, symbol, leverage):
         try:
