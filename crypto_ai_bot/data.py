@@ -17,7 +17,7 @@ class MarketData:
                 "options": {"defaultType": "swap"}   # Perpetual Futures
             })
             if TESTNET:
-                self.exchange.set_sandbox_mode(True)   # روش رسمی CCXT
+                self.exchange.set_sandbox_mode(True)
         else:
             raise Exception("Exchange Not Supported")
 
@@ -43,15 +43,19 @@ class MarketData:
         return data
 
     def get_usdt_symbols(self):
-        markets = self.exchange.load_markets()
+        """
+        دریافت فقط قراردادهای فیوچرز دائمی (بدون بارگذاری اسپات).
+        """
+        # دریافت بازارها با پارامتر swap (فقط فیوچرز)
+        markets = self.exchange.fetch_markets(params={"type": "swap"})
         symbols = []
-        for symbol, market in markets.items():
+        for market in markets:
             if (
                 market.get("active", False) and
                 market.get("swap", False) and
                 market.get("linear", False) and
                 market.get("quote") == "USDT"
             ):
-                symbols.append(symbol)
+                symbols.append(market["symbol"])
         symbols.sort()
         return symbols
