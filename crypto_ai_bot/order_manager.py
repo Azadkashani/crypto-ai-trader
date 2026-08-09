@@ -1,6 +1,6 @@
 """
 Crypto AI Bot v1.2
-Order Manager – Gate.io Testnet (correct CCXT sandbox)
+Order Manager – Gate.io Testnet (manual URL fix)
 """
 
 import ccxt
@@ -16,8 +16,24 @@ class OrderManager:
             'options': {'defaultType': 'swap'},
         })
         if TESTNET:
-            # روش رسمی CCXT برای فعال‌سازی تست‌نت
-            self.exchange.set_sandbox_mode(True)
+            # تنظیم دستی آدرس‌های تست‌نت
+            testnet_url = 'https://fx-api-testnet.gateio.ws/api/v4'
+            self.exchange.urls['api']['futures'] = {
+                'public': testnet_url,
+                'private': testnet_url,
+            }
+            self.exchange.urls['api']['spot'] = {
+                'public': testnet_url,
+                'private': testnet_url,
+            }
+            self.exchange.urls['api']['margin'] = {
+                'public': testnet_url,
+                'private': testnet_url,
+            }
+            self.exchange.urls['api']['delivery'] = {
+                'public': testnet_url,
+                'private': testnet_url,
+            }
 
     def set_leverage(self, symbol, leverage):
         try:
